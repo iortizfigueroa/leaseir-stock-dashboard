@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Stock Leaseir - Evolucion diaria del mes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { font-family: "Jost", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f5f7fa; color: #1a1a1a; font-size: 12px; }
+header { background: linear-gradient(135deg, #0a2730 0%, #074c5b 100%); color: white; padding: 16px 24px 0 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+header h1 { margin: 0 0 4px 0; font-size: 20px; font-weight: 600; }
+header .subtitle { font-size: 12px; opacity: 0.85; }
+.cuadre-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.cu-card { background: rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 12px; min-width: 110px; border: 1px solid rgba(255,255,255,0.2); }
+.cu-card .lbl { font-size: 10px; text-transform: uppercase; opacity: 0.8; letter-spacing: 0.4px; }
+.cu-card .val { font-size: 13px; font-weight: 700; margin-top: 2px; }
+.cu-card .diff { font-size: 10px; margin-top: 2px; opacity: 0.9; }
+.cu-card .diff.ok { color: #b6f0c5; }
+.cu-card .diff.bad { color: #ffb8b8; }
+
+.tabs { display: flex; margin-top: 14px; gap: 4px; flex-wrap: wrap; }
+.tab { background: rgba(255,255,255,0.08); color: white; padding: 8px 18px; border-radius: 6px 6px 0 0; cursor: pointer; font-weight: 600; font-size: 13px; border: 1px solid transparent; }
+.tab:hover { background: rgba(255,255,255,0.18); }
+.tab.active { background: #f5f7fa; color: #0a2730; border: 1px solid #d0d4d8; border-bottom: 1px solid #f5f7fa; }
+.tab .badge { background: rgba(255,255,255,0.25); border-radius: 8px; padding: 0 6px; font-size: 10px; margin-left: 5px; }
+.tab.active .badge { background: #0a2730; color: white; }
+
+.controls { background: white; padding: 10px 24px; border-bottom: 1px solid #e0e4e8; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 50; }
+.controls input { padding: 5px 10px; border: 1px solid #d0d4d8; border-radius: 5px; font-size: 12px; width: 220px; }
+.controls .count { color: #3f5a63; font-size: 11px; }
+.controls .info { color: #6b8088; font-size: 10px; margin-left: auto; max-width: 360px; }
+.controls .group { display: flex; align-items: center; gap: 1px; padding: 3px 8px; background: #f5f7fa; border-radius: 5px; border: 1px solid #e0e4e8; }
+.controls .group .lab { font-size: 10px; color: #555; text-transform: uppercase; font-weight: 600; margin-right: 4px; }
+.controls .group label { font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 1px; margin: 0 3px 0 0; }
+.controls .group label input { margin: 0; }
+.controls .group.hidden { display: none; }
+
+main { padding: 0 12px 40px 12px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: white; font-size: 11px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-radius: 6px; overflow: hidden; }
+thead th { background: #0a2730; color: white; font-weight: 600; padding: 6px 6px; text-align: left; border-right: 1px solid rgba(255,255,255,0.15); font-size: 11px; cursor: pointer; user-select: none; white-space: nowrap; }
+thead th.num { text-align: right; }
+thead th.day { background: #074c5b; min-width: 70px; max-width: 80px; text-align: right; }
+thead th.day.last { background: #0a8aad; }
+thead th.day.first { background: #0d7a5f; }
+thead th.sortable:hover { background: #10323d; }
+thead th.day.sortable:hover { background: #2c87a0; }
+thead th.day.last.sortable:hover { background: #21758a; }
+thead th.day.first.sortable:hover { background: #0a5d6e; }
+thead th .sort-ind { display: inline-block; margin-left: 3px; opacity: 0.4; font-size: 9px; }
+thead th.sort-asc .sort-ind, thead th.sort-desc .sort-ind { opacity: 1; }
+
+tbody td { padding: 3px 5px; border-bottom: 1px solid #eef0f3; border-right: 1px solid #f0f2f5; text-align: right; font-variant-numeric: tabular-nums; vertical-align: middle; font-size: 11px; }
+tbody td.left { text-align: left; }
+tbody td.spec { font-weight: 600; color: #0a2730; cursor: pointer; white-space: nowrap; }
+tbody td.spec:hover { background: #e8eef7; text-decoration: underline; }
+tbody td.desc { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #444; }
+tbody td.sup { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: #555; }
+tbody td.tipo { font-size: 10px; color: #3f5a63; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tbody td.cu { font-weight: 600; background: #fef9e7; }
+/* Columnas izquierdas fijas (sticky) */
+#table-stock thead th:nth-child(1), #table-simulacion thead th:nth-child(1), #table-stock tbody td:nth-child(1), #table-simulacion tbody td:nth-child(1), #table-stock tfoot td.left, #table-simulacion tfoot td.left { position: sticky; left: 0; z-index: 3; }
+#table-stock thead th:nth-child(2), #table-simulacion thead th:nth-child(2), #table-stock tbody td:nth-child(2), #table-simulacion tbody td:nth-child(2) { position: sticky; left: 80px; z-index: 3; }
+#table-stock thead th:nth-child(3), #table-simulacion thead th:nth-child(3), #table-stock tbody td:nth-child(3), #table-simulacion tbody td:nth-child(3) { position: sticky; left: 320px; z-index: 3; }
+#table-stock thead th:nth-child(4), #table-simulacion thead th:nth-child(4), #table-stock tbody td:nth-child(4), #table-simulacion tbody td:nth-child(4) { position: sticky; left: 450px; z-index: 3; }
+#table-stock thead th:nth-child(5), #table-simulacion thead th:nth-child(5), #table-stock tbody td:nth-child(5), #table-simulacion tbody td:nth-child(5) { position: sticky; left: 550px; z-index: 3; }
+/* Columna 6 = último día del mes anterior, también sticky con sombra al final */
+#table-stock thead th:nth-child(6), #table-stock tbody td:nth-child(6) { position: sticky; left: 630px; z-index: 3; background: #f0f9f1 !important; box-shadow: 2px 0 5px rgba(0,0,0,0.08); }
+#table-stock thead th, #table-simulacion thead th { z-index: 5 !important; }
+#table-stock tbody td:nth-child(1), #table-simulacion tbody td:nth-child(1) { background: white; min-width: 80px; max-width: 80px; }
+#table-stock tbody td:nth-child(2), #table-simulacion tbody td:nth-child(2) { background: white; min-width: 240px; max-width: 240px; }
+#table-stock tbody td:nth-child(3), #table-simulacion tbody td:nth-child(3) { background: white; min-width: 130px; max-width: 130px; }
+#table-stock tbody td:nth-child(4), #table-simulacion tbody td:nth-child(4) { background: white; min-width: 100px; max-width: 100px; }
+#table-stock tbody td:nth-child(5), #table-simulacion tbody td:nth-child(5) { background: #fef9e7; min-width: 80px; max-width: 80px; }
+#table-stock tbody tr:hover td:nth-child(1), #table-simulacion tbody tr:hover td:nth-child(1), #table-stock tbody tr:hover td:nth-child(2), #table-simulacion tbody tr:hover td:nth-child(2), #table-stock tbody tr:hover td:nth-child(3), #table-simulacion tbody tr:hover td:nth-child(3), #table-stock tbody tr:hover td:nth-child(4), #table-simulacion tbody tr:hover td:nth-child(4) { background: #f8fafc; }
+#table-stock tbody tr:hover td:nth-child(5), #table-simulacion tbody tr:hover td:nth-child(5) { background: #fcefd3; }
+#table-stock .others-row td:nth-child(1), #table-stock .others-row td:nth-child(2), #table-stock .others-row td:nth-child(3), #table-stock .others-row td:nth-child(4), #table-stock .others-row td:nth-child(5) { background: #f0f4fa !important; }
+#table-stock .gap-row td:nth-child(1), #table-stock .gap-row td:nth-child(2), #table-stock .gap-row td:nth-child(3), #table-stock .gap-row td:nth-child(4), #table-stock .gap-row td:nth-child(5) { background: #fef0e6 !important; }
+#table-stock tfoot td:nth-child(1), #table-simulacion tfoot td:nth-child(1) { background: #dbe6e8 !important; min-width: 80px; max-width: 80px; }
+
+tbody td.day-cell { padding: 3px 4px; cursor: default; min-width: 70px; }
+tbody td.day-cell.last { background: white; }
+tbody td.day-cell.first { background: white; }
+/* Indicador por celda de día: rojizo si stock < min, amarillo si stock >= 2× min */
+tbody td.day-cell.cell-below-min { background: #fde4e4 !important; }
+tbody td.day-cell.cell-above-min { background: #fef9e7 !important; }
+tbody tr:hover td.day-cell.cell-below-min { background: #fad2d2 !important; }
+tbody tr:hover td.day-cell.cell-above-min { background: #fcefd3 !important; }
+.cell-stack { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.cell-stack .uds { font-weight: 600; color: #1a1a1a; font-size: 11px; }
+.cell-stack .eur { font-size: 9px; color: #6b8088; margin-top: 0; }
+.cell-stack .uds.zero { color: #bccccf; font-weight: 400; }
+
+tbody tr:hover td { background: #f8fafc; }
+tbody tr:hover td.cu { background: #fcefd3; }
+tbody tr:hover td.day-cell.last { background: #f3f0f7; }
+tbody tr:hover td.day-cell.first { background: #e1f1e4; }
+
+.others-row td { background: #f0f4fa !important; font-style: italic; border-top: 2px solid #0a2730; }
+.others-row td.cu { background: #f0f4fa !important; }
+.others-row td.spec { color: #0a2730; font-weight: 700; font-style: normal; cursor: default; }
+
+.gap-row td { background: #fef0e6 !important; font-style: italic; border-top: 2px solid #bd6b2e; }
+.gap-row td.spec { color: #bd6b2e; font-weight: 700; font-style: normal; cursor: default; }
+
+tfoot td { background: #dbe6e8 !important; font-weight: 700; padding: 6px; border-top: 2px solid #0a2730; font-size: 11px; }
+tfoot .cell-stack .uds { font-weight: 700; }
+tfoot .cell-stack .eur { color: #555; font-weight: 600; font-size: 10px; }
+tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-size: 10px; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.cliente { font-weight: 600; color: #0a8aad; }
+
+.modal-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; z-index: 1000; justify-content: center; align-items: center; }
+.modal-bg.show { display: flex; }
+.modal { background: white; border-radius: 10px; padding: 20px; max-width: 900px; width: 92%; max-height: 88vh; overflow-y: auto; box-shadow: 0 8px 30px rgba(0,0,0,0.3); position: relative; }
+.modal h2 { margin: 0 0 4px 0; color: #0a2730; font-size: 20px; }
+.modal .modal-sub { color: #3f5a63; font-size: 12px; margin-bottom: 14px; }
+.modal .close-btn { position: absolute; top: 10px; right: 10px; background: #f0f2f5; border: none; border-radius: 50%; width: 28px; height: 28px; font-size: 16px; cursor: pointer; }
+.modal canvas { max-height: 360px; }
+</style>
+</head>
+<body>
+<header>
+<h1>Stock Leaseir &mdash; Evolucion diaria del mes</h1>
+<div class="subtitle" id="header-subtitle">30-abril a 01-junio. SPECs &gt; 50 EUR/u individuales; resto en "Others". <strong>Bolsa A</strong>=raws sueltos; <strong>Bolsa B</strong>=raws embebidos en WIPs; <strong>Bolsa C</strong>=overhead/labor del WIP (cu real &ne; suma de raws); <strong>Bolsa D</strong>=WIPs sin escandallo. Fila "GAP NO EXPLICADO" = ajuste contable que cierra C+D + drift de cu (constante por día).</div>
+<div class="cuadre-row" id="cuadre-row"></div>
+<div class="tabs">
+  <div class="tab active" data-tab="stock">Stock evolutivo</div>
+  <div class="tab" data-tab="entradas">Entradas mes <span class="badge" id="badge-entradas"></span></div>
+  <div class="tab" data-tab="salidas">Salidas mes <span class="badge" id="badge-salidas"></span></div>
+  <div class="tab" data-tab="cliente">Salidas x cliente <span class="badge" id="badge-cliente"></span></div>
+  <div class="tab" data-tab="simulacion">🔮 Planificación <span class="badge" id="badge-sim"></span></div>
+</div>
+</header>
+
+<div class="controls">
+<input type="text" id="search" placeholder="Buscar SPEC, descripcion, proveedor, cliente..." oninput="rerender()">
+<span class="count" id="rowcount"></span>
+<div class="group" id="grp-month" style="background:#e8f5f8;border:1px solid #cfe5ea;">
+  <button onclick="changeMonth(-1)" style="border:none;background:#0a2730;color:white;border-radius:3px;cursor:pointer;padding:3px 8px;font-size:13px;font-weight:700;">◀</button>
+  <span class="lab" id="month-label" style="min-width:110px;text-align:center;color:#0a2730;font-weight:700;font-size:13px;">—</span>
+  <button onclick="changeMonth(1)" style="border:none;background:#0a2730;color:white;border-radius:3px;cursor:pointer;padding:3px 8px;font-size:13px;font-weight:700;">▶</button>
+  <span class="lab" style="margin-left:10px;">Día</span>
+  <select id="day-filter" onchange="window._activeDay=this.value||null;rerender()" style="border:1px solid #cfe5ea;border-radius:3px;padding:2px 6px;font-size:12px;">
+    <option value="">Todos</option>
+  </select>
+</div>
+<div class="group" id="grp-sort" style="white-space:nowrap;gap:2px;">
+  <span class="lab" style="margin-right:6px;">Sort día:</span><label style="margin:0 4px 0 0;display:inline-flex;align-items:center;gap:2px;"><input type="radio" name="sortmode" value="uds" checked onchange="rerender()" style="margin:0;"> #</label><label style="margin:0;display:inline-flex;align-items:center;gap:2px;"><input type="radio" name="sortmode" value="val" onchange="rerender()" style="margin:0;"> EUR</label>
+</div>
+<div class="group" id="grp-vista" style="white-space:nowrap;gap:2px;">
+  <span class="lab" style="margin-right:6px;">Vista:</span><label style="margin:0 4px 0 0;display:inline-flex;align-items:center;gap:2px;"><input type="radio" name="vistamode" value="diaria" checked onchange="rerender()" style="margin:0;"> Diaria</label><label style="margin:0;display:inline-flex;align-items:center;gap:2px;"><input type="radio" name="vistamode" value="mensual" onchange="rerender()" style="margin:0;"> Mensual</label>
+</div>
+<div class="group hidden" id="grp-salidas-vista">
+  <span class="lab">Mostrar</span>
+  <label><input type="radio" name="salidasmode" value="raw" checked onchange="rerender()"> Por Raw</label>
+  <label><input type="radio" name="salidasmode" value="wip" onchange="rerender()"> Por SPEC salida</label>
+</div>
+<span class="info">Click cabecera = ordenar &middot; Click SPEC = grafico</span>
+</div>
+
+<main>
+<div id="inventario-chart-container" style="display:flex;gap:14px;margin:14px 0;align-items:stretch;">
+  <div style="flex:1 1 0;min-width:0;background:white;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-top:3px solid #0a2730;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:600;color:#0a2730;letter-spacing:0.3px;">📊 Evolución diaria del mes</div>
+      <div id="inventario-chart-info-d" style="font-size:11px;color:#6b8088;"></div>
+    </div>
+    <div style="position:relative;width:100%;height:200px;"><canvas id="inventario-chart-daily"></canvas></div>
+  </div>
+  <div style="flex:1 1 0;min-width:0;background:white;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-top:3px solid #074c5b;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:600;color:#074c5b;letter-spacing:0.3px;">📈 Evolución mensual (fin de mes)</div>
+      <div id="inventario-chart-info-m" style="font-size:11px;color:#6b8088;"></div>
+    </div>
+    <div style="position:relative;width:100%;height:200px;"><canvas id="inventario-chart-monthly"></canvas></div>
+  </div>
+</div>
+<div id="resumen-visual" style="background:white;border-radius:8px;padding:16px 20px;margin:14px 0;box-shadow:0 1px 3px rgba(0,0,0,0.06);"></div>
+<div class="tab-content active" id="tab-stock"><table id="table-stock"></table></div>
+<div class="tab-content" id="tab-entradas"><table id="table-entradas"></table></div>
+<div class="tab-content" id="tab-salidas"><table id="table-salidas"></table></div>
+<div class="tab-content" id="tab-cliente"><table id="table-cliente"></table></div>
+<div class="tab-content" id="tab-simulacion"><div id="sim-summary"></div><table id="table-simulacion"></table></div>
+</main>
+
+<div class="modal-bg" id="modalChart" onclick="if(event.target===this)closeChart()">
+  <div class="modal">
+    <button class="close-btn" onclick="closeChart()">&times;</button>
+    <h2 id="m-spec"></h2>
+    <div class="modal-sub" id="m-desc"></div>
+    <canvas id="m-chart"></canvas>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalDay" onclick="if(event.target===this)closeDayModal()">
+  <div class="modal">
+    <button class="close-btn" onclick="closeDayModal()">&times;</button>
+    <h2 id="dd-title"></h2>
+    <div class="modal-sub" id="dd-sub"></div>
+    <div id="dd-content"></div>
+  </div>
+</div>
+
+<script>
+const DATA = __DATA__;
+const DAYS = DATA.days;
+const LAST = DATA.last;
+const FIRST = DAYS[0];
+const THRESHOLD = DATA.cost_threshold;
+const REAL_DAYS = ["30-04", "27-05", "28-05", "29-05", "01-06", "02-06"];
+const MES_ABBR = {"01":"ene","02":"feb","03":"mar","04":"abr","05":"may","06":"jun","07":"jul","08":"ago","09":"sep","10":"oct","11":"nov","12":"dic"};
+const MES_LONG = {"01":"Enero","02":"Febrero","03":"Marzo","04":"Abril","05":"Mayo","06":"Junio","07":"Julio","08":"Agosto","09":"Septiembre","10":"Octubre","11":"Noviembre","12":"Diciembre"};
+const DASH_YEAR = 2026;
+function lblPretty(d) { const p = String(d).split("-"); return p.length===2 ? (p[0] + "-" + (MES_ABBR[p[1]] || p[1])) : d; }
+
+// Mes activo (MM) — arrancar en el último mes con >= 5 días de movimientos (evita arrancar en un mes vacío)
+function pickDefaultMonth() {
+  const cnt = {};
+  (DATA.mov_days || []).forEach(d => { const m = d.split("-")[1]; cnt[m] = (cnt[m]||0)+1; });
+  const sorted = Object.keys(cnt).sort();
+  for (let i = sorted.length-1; i >= 0; i--) {
+    if (cnt[sorted[i]] >= 5) return sorted[i];
+  }
+  return sorted[sorted.length-1] || LAST.split("-")[1];
+}
+window._activeMonth = pickDefaultMonth();
+window._activeDay = null;
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function isWeekday(year, m, d) { const dt = new Date(year, m-1, d); const w = dt.getDay(); return w !== 0 && w !== 6; }
+function lastWorkdayLbl(year, m) {
+  let ld = new Date(year, m, 0).getDate();
+  while (ld > 0 && !isWeekday(year, m, ld)) ld--;
+  return pad2(ld) + "-" + pad2(m);
+}
+function weekdaysOfMonth(year, m) {
+  const out = [];
+  const lastD = new Date(year, m, 0).getDate();
+  for (let d = 1; d <= lastD; d++) if (isWeekday(year, m, d)) out.push(pad2(d) + "-" + pad2(m));
+  return out;
+}
+function getMonthDaysForStock() {
+  // last workday of prev month + all weekdays of active month
+  const m = parseInt(window._activeMonth);
+  if (!m) return DAYS;
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevY = m === 1 ? DASH_YEAR - 1 : DASH_YEAR;
+  return [lastWorkdayLbl(prevY, prevM)].concat(weekdaysOfMonth(DASH_YEAR, m));
+}
+function getMonthDaysForMov() {
+  // only days within active month that exist in DATA.mov_days
+  const m = window._activeMonth;
+  const all = (DATA.mov_days || []).filter(d => d.split("-")[1] === m);
+  return window._activeDay ? all.filter(d => d === window._activeDay) : all;
+}
+function changeMonth(delta) {
+  let m = parseInt(window._activeMonth) + delta;
+  if (m < 1) m = 12;
+  if (m > 12) m = 1;
+  window._activeMonth = pad2(m);
+  window._activeDay = null;
+  rerender();
+}
+function updateMonthBar() {
+  const lblEl = document.getElementById("month-label");
+  if (lblEl) lblEl.textContent = MES_LONG[window._activeMonth] + " " + DASH_YEAR;
+  const sel = document.getElementById("day-filter");
+  if (sel) {
+    const days = (DATA.mov_days || []).filter(d => d.split("-")[1] === window._activeMonth);
+    sel.innerHTML = '<option value="">Todos los días</option>' + days.map(d => '<option value="'+d+'"' + (d===window._activeDay?' selected':'') + '>'+lblPretty(d)+'</option>').join("");
+    sel.value = window._activeDay || "";
+  }
+}
+
+let currentTab = "stock";
+let sortState = {
+  stock: {col: "cu", dir: "desc"},
+  entradas: {col: "val", dir: "desc"},
+  salidas: {col: "val", dir: "desc"},
+  cliente: {col: "val", dir: "desc"},
+  simulacion: {col: "total_year_eur", dir: "desc"}
+};
+
+function setSimSort(col) {
+  const ss = sortState.simulacion;
+  if (ss.col === col) ss.dir = ss.dir === "asc" ? "desc" : "asc";
+  else { ss.col = col; ss.dir = "desc"; }
+  rerender();
+}
+let othersExpanded = { stock: false, entradas: false, salidas: false };
+
+function toggleOthers(tab) {
+  othersExpanded[tab] = !othersExpanded[tab];
+  rerender();
+}
+
+function fmtInt(x) { if (!x) return "0"; return Math.round(x).toLocaleString("es-ES").replace(/,/g, "."); }
+function fmtEur(x) { if (!x) return "0 €"; return Math.round(x).toLocaleString("es-ES").replace(/,/g, ".") + " €"; }
+function escapeHtml(s) { return String(s||"").replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
+function jsesc(s) { return String(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+
+function sortInd(dir) { return dir === "asc" ? '<span class="sort-ind">&#x25B2;</span>' : '<span class="sort-ind">&#x25BC;</span>'; }
+
+function getDaySortMode() {
+  const r = document.querySelector('input[name=sortmode]:checked');
+  return r ? r.value : "uds";
+}
+
+function makeHeader(cols, tabKey) {
+  const ss = sortState[tabKey];
+  let h = "<thead><tr>";
+  cols.forEach(c => {
+    const isActive = ss.col === c.key;
+    const dir = isActive ? ss.dir : null;
+    const cls = (c.num ? "num " : "") + (c.dayCls || "") + " sortable" + (isActive ? " sort-" + dir : "");
+    h += '<th class="' + cls + '" onclick="setSort(\'' + tabKey + '\',\'' + c.key + '\')">';
+    h += escapeHtml(c.label);
+    if (isActive) h += sortInd(dir);
+    else h += '<span class="sort-ind">&#x25C7;</span>';
+    h += '</th>';
+  });
+  h += "</tr></thead>";
+  return h;
+}
+
+function setSort(tab, col) {
+  const ss = sortState[tab];
+  const numKw = ["cu","uds","val","u_stock","v_stock","qty","coste_unit","compras","salidas"];
+  const isNum = numKw.includes(col) || col.startsWith("u_") || col.startsWith("v_");
+  if (ss.col === col) ss.dir = ss.dir === "asc" ? "desc" : "asc";
+  else { ss.col = col; ss.dir = isNum ? "desc" : "asc"; }
+  rerender();
+}
+
+function sortRows(rows, col, dir) {
+  const mul = dir === "asc" ? 1 : -1;
+  // Soporte para var_<MM> = net del mes (entr-sal en EUR)
+  const varM = col && col.startsWith("var_") ? col.substring(4) : null;
+  const valOf = (r) => {
+    if (!varM) return r[col];
+    let net = 0;
+    (DATA.mov_days || []).forEach(d => {
+      if (d.split("-")[1] === varM) {
+        const e = r["entr_"+d]||0, s = r["sal_"+d]||0;
+        net += (e - s) * (r.cu || 0);
+      }
+    });
+    return net;
+  };
+  return [...rows].sort((a, b) => {
+    let va = valOf(a), vb = valOf(b);
+    if (typeof va === "string") va = va.toLowerCase();
+    if (typeof vb === "string") vb = vb.toLowerCase();
+    if (va == null) va = (typeof vb === "number" ? 0 : "");
+    if (vb == null) vb = (typeof va === "number" ? 0 : "");
+    if (va < vb) return -1 * mul;
+    if (va > vb) return 1 * mul;
+    return 0;
+  });
+}
+
+function filterRows(rows, q) {
+  if (!q) return rows;
+  q = q.toLowerCase();
+  return rows.filter(r =>
+    (r.spec||"").toLowerCase().includes(q) ||
+    (r.desc||"").toLowerCase().includes(q) ||
+    (r.sup||"").toLowerCase().includes(q) ||
+    (r.tipo||"").toLowerCase().includes(q) ||
+    (r.cliente||"").toLowerCase().includes(q)
+  );
+}
+
+function specCell(sp, clickable) {
+  if (!clickable) return '<td class="left spec" style="cursor:default">' + escapeHtml(sp) + '</td>';
+  return '<td class="left spec" onclick="showChart(\''+ jsesc(sp) +'\')">' + escapeHtml(sp) + '</td>';
+}
+
+function dayCellHtml(uds, val, dayCls, spec, day, entr, sal, minimo, isCarried) {
+  // Si el día no está en DAYS (datos no disponibles aún) → celda vacía pendiente
+  if (day && DAYS.indexOf(day) === -1 && !isCarried) {
+    return '<td class="day-cell ' + dayCls + '" style="background:white;color:#cdd5d9;font-size:10px;text-align:center;">·</td>';
+  }
+  const udsCls = (uds === 0 || !uds) ? "uds zero" : "uds";
+  const click = (spec && day) ? ' onclick="showDayDetail(\''+jsesc(spec)+'\',\''+day+'\')" style="cursor:pointer;"' : '';
+  // Color por celda según mínimo
+  let cellCls = "";
+  if (minimo != null && minimo > 0 && uds != null) {
+    if (uds < minimo) cellCls = " cell-below-min";
+    else if (uds >= 2 * minimo) cellCls = " cell-above-min";
+  }
+  let movHtml = "";
+  if (spec && day && ((entr && entr > 0) || (sal && sal > 0))) {
+    let parts = [];
+    if (entr > 0) parts.push('<span style="color:#0d7a5f;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();showDayDetail(\''+jsesc(spec)+'\',\''+day+'\')">+' + fmtInt(entr) + '</span>');
+    if (sal > 0) {
+      if (parts.length) parts.push('<span style="color:#bccccf;">/</span>');
+      parts.push('<span style="color:#c0492f;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();showDayDetail(\''+jsesc(spec)+'\',\''+day+'\')">-' + fmtInt(sal) + '</span>');
+    }
+    movHtml = '<span style="font-size:9px;margin-top:1px;white-space:nowrap;">' + parts.join("") + '</span>';
+  }
+  // Si es carried (heredado del día anterior), atenuar visualmente
+  const opacity = isCarried ? "opacity:0.55;" : "";
+  return '<td class="day-cell ' + dayCls + cellCls + '"' + click + ' style="' + opacity + '"><div class="cell-stack">'
+       + '<span class="' + udsCls + '">' + fmtInt(uds) + '</span>'
+       + '<span class="eur">' + fmtEur(val) + '</span>'
+       + movHtml
+       + '</div></td>';
+}
+
+function dayClsFor(lbl) {
+  if (lbl === FIRST) return "first";
+  if (lbl === LAST) return "last";
+  return "";
+}
+
+function getVistaMode() {
+  const r = document.querySelector('input[name=vistamode]:checked');
+  return r ? r.value : "diaria";
+}
+
+function getActiveDays() {
+  if (getVistaMode() === "mensual") {
+    // Primer dia + ultimo dia de cada mes + ultimo dia disponible (TODA la serie)
+    const out = [DAYS[0]];
+    for (let i = 0; i < DAYS.length - 1; i++) {
+      const curM = DAYS[i].split("-")[1];
+      const nxtM = DAYS[i+1].split("-")[1];
+      if (curM !== nxtM && DAYS[i] !== out[out.length-1]) out.push(DAYS[i]);
+    }
+    const last = DAYS[DAYS.length - 1];
+    if (last !== out[out.length-1]) out.push(last);
+    return out;
+  }
+  // Vista diaria filtrada por mes activo: último día hábil del mes anterior + todos los días hábiles del mes
+  return getMonthDaysForStock();
+}
+
+function renderResumenVisual(rows) {
+  // Detectar scope según vista/mes activo
+  const isMensual = getVistaMode() === "mensual";
+  const activeM = window._activeMonth;
+  // Día inicial / final de cada vista:
+  // - Mensual: desde DAYS[0] (30-04) hasta LAST (panorámica completa)
+  // - Diaria: desde último día hábil del mes anterior al activo, hasta el último día del mes activo presente en DAYS
+  let startDay, endDay;
+  if (isMensual) { startDay = DAYS[0]; endDay = LAST; }
+  else {
+    const monthDaysInData = DAYS.filter(d => d.split("-")[1] === activeM);
+    if (monthDaysInData.length === 0) { startDay = DAYS[0]; endDay = LAST; }
+    else {
+      endDay = monthDaysInData[monthDaysInData.length - 1];
+      // start = día previo en DAYS al primer día del mes activo
+      const firstIdx = DAYS.indexOf(monthDaysInData[0]);
+      startDay = firstIdx > 0 ? DAYS[firstIdx - 1] : monthDaysInData[0];
+    }
+  }
+  const total30 = (DATA.totales_real[startDay] != null) ? DATA.totales_real[startDay] : (DATA.totales_inferred[startDay] || 0);
+  const totalLast = (DATA.totales_real[endDay] != null) ? DATA.totales_real[endDay] : (DATA.totales_inferred[endDay] || 0);
+  const variacion = totalLast - total30;
+  const pctVar = total30 > 0 ? (variacion / total30 * 100) : 0;
+  const upDown = variacion >= 0 ? "↑" : "↓";
+  const upColor = variacion >= 0 ? "#0d7a5f" : "#c0492f";
+  const bg = variacion >= 0 ? "#e7f3ec" : "#fde4e4";
+
+  // Sumar entradas/salidas en el SCOPE (días en (startDay, endDay] de DATA.mov_days)
+  const startIdx = DAYS.indexOf(startDay);
+  const endIdx = DAYS.indexOf(endDay);
+  function inScope(d) {
+    const idx = DAYS.indexOf(d);
+    return idx > startIdx && idx <= endIdx;
+  }
+  let totEntVal = 0, totSalVal = 0;
+  const scopeEntPerSpec = {}, scopeSalPerSpec = {}, scopeEntValPerSpec = {}, scopeSalValPerSpec = {};
+  rows.forEach(r => {
+    let e=0, s=0, ev=0, sv=0;
+    (DATA.mov_days||[]).forEach(d => {
+      if (inScope(d)) {
+        const eD = r["entr_"+d]||0, sD = r["sal_"+d]||0;
+        e += eD; s += sD;
+        ev += eD*(r.cu||0); sv += sD*(r.cu||0);
+      }
+    });
+    scopeEntPerSpec[r.spec] = e; scopeSalPerSpec[r.spec] = s;
+    scopeEntValPerSpec[r.spec] = ev; scopeSalValPerSpec[r.spec] = sv;
+    totEntVal += ev; totSalVal += sv;
+  });
+  // Others: usar others_*_dia_val si está disponible (EUR exacto de los low SPECs)
+  (DATA.mov_days||[]).forEach(d => {
+    if (inScope(d)) {
+      totEntVal += (DATA.others_entradas_dia_val||{})[d] || 0;
+      totSalVal += (DATA.others_salidas_dia_val||{})[d] || 0;
+    }
+  });
+  const ajusteNoRastreado = variacion - (totEntVal - totSalVal);
+
+  // Top movers (scope-based)
+  const moversList = rows.map(r => {
+    const netU = (scopeEntPerSpec[r.spec]||0) - (scopeSalPerSpec[r.spec]||0);
+    const netV = (scopeEntValPerSpec[r.spec]||0) - (scopeSalValPerSpec[r.spec]||0);
+    return Object.assign({}, r, {_net_u: netU, _net_v: netV});
+  });
+  const moversUp = moversList.filter(r => r._net_u > 0).sort((a,b) => b._net_v - a._net_v).slice(0, 8);
+  const moversDown = moversList.filter(r => r._net_u < 0).sort((a,b) => a._net_v - b._net_v).slice(0, 8);
+
+  function moverRow(r, isUp) {
+    const v = r._net_v || 0;
+    const u = r._net_u || 0;
+    const color = isUp ? "#0d7a5f" : "#c0492f";
+    const bar = Math.min(100, Math.abs(v) / Math.max(1, isUp ? (moversUp[0]?._net_v||1) : Math.abs(moversDown[0]?._net_v||1)) * 100);
+    const moverArgs = "'"+jsesc(r.spec)+"','"+(isMensual?"":activeM)+"',''";
+    return '<div onclick="showMesDetail(' + moverArgs + ')" style="cursor:pointer;padding:5px 8px;border-radius:4px;margin:2px 0;background:linear-gradient(to right, ' + (isUp?"#e7f3ec":"#fde4e4") + ' ' + bar + '%, transparent ' + bar + '%);display:flex;justify-content:space-between;align-items:center;font-size:11px;" onmouseover="this.style.outline=\'1px solid '+color+'\';" onmouseout="this.style.outline=\'none\';">'
+         + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"><span style="font-weight:700;color:#0a2730;">' + escapeHtml(r.spec) + '</span> <span style="color:#3f5a63;font-size:10px;">' + escapeHtml((r.desc||"").substring(0,50)) + '</span></div>'
+         + '<div style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;margin-left:8px;"><span style="color:'+color+';font-weight:700;">' + (u>=0?"+":"") + fmtInt(u) + ' uds</span> <span style="color:#6b8088;font-size:10px;">' + (v>=0?"+":"") + fmtEur(v) + '</span></div>'
+         + '</div>';
+  }
+
+  // Helper para barra horizontal de magnitud
+  const maxAbs = Math.max(Math.abs(total30), Math.abs(totalLast), Math.abs(totEntVal), Math.abs(totSalVal), Math.abs(ajusteNoRastreado), 1);
+  function eqRow(label, value, color, bold) {
+    const w = Math.min(100, Math.abs(value) / maxAbs * 100);
+    return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px;">'
+         + '<div style="flex:0 0 130px;color:#444;' + (bold?'font-weight:700;':'') + '">' + label + '</div>'
+         + '<div style="flex:1;height:10px;background:linear-gradient(to right, ' + color + ' ' + w + '%, transparent ' + w + '%);border-radius:2px;"></div>'
+         + '<div style="flex:0 0 110px;text-align:right;color:' + color + ';font-weight:700;font-variant-numeric:tabular-nums;">' + (value>=0?"+":"") + fmtEur(value) + '</div>'
+         + '</div>';
+  }
+
+  let h = '<div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px;align-items:start;">';
+  h += '<div style="grid-column: 1;padding:14px;background:'+bg+';border-radius:8px;border-left:4px solid '+upColor+';">';
+  h += '<div style="font-size:11px;color:#3f5a63;text-transform:uppercase;letter-spacing:0.4px;">Variación (' + lblPretty(startDay) + ' → ' + lblPretty(endDay) + ')</div>';
+  h += '<div style="font-size:22px;font-weight:800;color:'+upColor+';margin-top:4px;">' + upDown + ' ' + (variacion>=0?"+":"") + fmtEur(variacion) + ' <span style="font-size:13px;color:#3f5a63;font-weight:500;">(' + (pctVar>=0?"+":"") + pctVar.toFixed(2) + '%)</span></div>';
+  h += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.08);">';
+  h += eqRow("Inventario " + lblPretty(startDay), total30, "#0a2730", true);
+  h += eqRow("(+) Entradas", totEntVal, "#0d7a5f");
+  h += eqRow("(−) Salidas", -totSalVal, "#c0492f");
+  if (Math.abs(ajusteNoRastreado) > 1) {
+    h += eqRow("(±) Ajuste no rastreado", ajusteNoRastreado, "#b8862f");
+  }
+  // Milestone intermedio: ultimo dia de cada mes dentro del scope
+  if (isMensual) {
+    for (let i = startIdx + 1; i < endIdx; i++) {
+      const curM = DAYS[i].split("-")[1];
+      const nxtM = DAYS[i+1].split("-")[1];
+      if (curM !== nxtM) {
+        const mid = DAYS[i];
+        const valMid = (DATA.totales_real[mid] != null) ? DATA.totales_real[mid] : (DATA.totales_inferred[mid] || 0);
+        h += '<div style="height:1px;background:rgba(63,90,99,0.3);margin:5px 0 3px;"></div>';
+        h += eqRow("• Inventario " + lblPretty(mid), valMid, "#3f5a63", true);
+      }
+    }
+  }
+  h += '<div style="height:1px;background:#3f5a63;margin:5px 0 3px;"></div>';
+  h += eqRow("Inventario " + lblPretty(endDay), totalLast, "#0a2730", true);
+  h += '</div>';
+  h += '<div style="font-size:10px;color:#6b8088;margin-top:8px;font-style:italic;">Ajuste = devoluciones, refurbished, revaloraciones cu y escandallos incompletos no recogidos en entradas/salidas SAP.</div>';
+  h += '</div>';
+
+  h += '<div style="grid-column: 2;"><div style="font-size:13px;font-weight:600;color:#0d7a5f;margin-bottom:6px;">⬆ Top componentes que SUBIERON stock</div>';
+  moversUp.forEach(r => h += moverRow(r, true));
+  h += '</div>';
+  h += '<div style="grid-column: 3;"><div style="font-size:13px;font-weight:600;color:#c0492f;margin-bottom:6px;">⬇ Top componentes que BAJARON stock</div>';
+  moversDown.forEach(r => h += moverRow(r, false));
+  h += '</div>';
+  h += '</div>';
+  document.getElementById("resumen-visual").innerHTML = h;
+}
+
+function renderStock(q) {
+  const ss = sortState.stock;
+  const sortMode = getDaySortMode();
+  let sortCol = ss.col;
+  if (sortMode === "val" && sortCol.startsWith("u_")) sortCol = "v_" + sortCol.substring(2);
+  if (sortMode === "uds" && sortCol.startsWith("v_")) sortCol = "u_" + sortCol.substring(2);
+
+  let rows = filterRows(DATA.stock, q);
+  rows = sortRows(rows, sortCol, ss.dir);
+
+  renderResumenVisual(rows);
+  const ACTIVE_DAYS = getActiveDays();
+  const isMensual = getVistaMode() === "mensual";
+
+  // Helper: suma entradas/salidas de un SPEC para un mes
+  function movOfMonth(r, monthMM) {
+    let e=0, s=0;
+    (DATA.mov_days || []).forEach(d => {
+      if (d.split("-")[1] === monthMM) {
+        e += r["entr_"+d] || 0;
+        s += r["sal_"+d] || 0;
+      }
+    });
+    const cu = r.cu || 0;
+    return {ent: e, sal: s, ent_v: e*cu, sal_v: s*cu};
+  }
+  function movOfActiveDayOrMonth(r) {
+    if (window._activeDay) {
+      const d = window._activeDay;
+      const e = r["entr_"+d] || 0;
+      const s = r["sal_"+d] || 0;
+      const cu = r.cu || 0;
+      return {ent: e, sal: s, ent_v: e*cu, sal_v: s*cu};
+    }
+    return movOfMonth(r, window._activeMonth);
+  }
+
+  // LAYOUT de columnas: días + columnas Var (intercaladas en mensual, final en diaria)
+  const LAYOUT = [];
+  for (let i = 0; i < ACTIVE_DAYS.length; i++) {
+    if (i > 0 && isMensual) {
+      const prevM = ACTIVE_DAYS[i-1].split("-")[1];
+      const curM = ACTIVE_DAYS[i].split("-")[1];
+      if (prevM !== curM) LAYOUT.push({type:"var", monthMM: curM});
+    }
+    LAYOUT.push({type:"day", day: ACTIVE_DAYS[i]});
+  }
+  if (!isMensual) LAYOUT.push({type:"var", monthMM: window._activeMonth, dayOnly: window._activeDay});
+
+  const cols = [
+    {key: "spec", label: "SPEC"},
+    {key: "desc", label: "Descripcion"},
+    {key: "sup", label: "Proveedor"},
+    {key: "tipo", label: "Tipo"},
+    {key: "cu", label: "Coste/u", num: true},
+  ];
+  LAYOUT.forEach(c => {
+    if (c.type === "day") {
+      cols.push({key: "u_" + c.day, label: c.day, num: true, dayCls: "day " + dayClsFor(c.day)});
+    } else {
+      const lbl = c.dayOnly ? ("Var " + lblPretty(c.dayOnly)) : ("Var " + (MES_LONG[c.monthMM] || c.monthMM));
+      cols.push({key: "var_"+c.monthMM, label: lbl, num: true, dayCls: "day"});
+    }
+  });
+
+  let h = makeHeader(cols, "stock");
+  h += "<tbody>";
+
+  function varMesCellHtml(ent, sal, ent_v, sal_v, spec, monthMM, dayLbl) {
+    const net = ent - sal;
+    const netVal = ent_v - sal_v;
+    const netColor = net > 0.5 ? "#0d7a5f" : (net < -0.5 ? "#c0492f" : "#6b8088");
+    let parts = "";
+    if (ent > 0) parts += '<span style="color:#0d7a5f;font-weight:600;">+' + fmtInt(ent) + '</span> ';
+    if (sal > 0) parts += '<span style="color:#c0492f;font-weight:600;">-' + fmtInt(sal) + '</span>';
+    if (!ent && !sal) parts = '<span style="color:#bccccf;">0</span>';
+    const ctxArgs = "'"+jsesc(spec||"")+"','"+(monthMM||"")+"','"+(dayLbl||"")+"'";
+    const click = spec ? ' onclick="showMesDetail(' + ctxArgs + ')" style="cursor:pointer;"' : '';
+    return '<td class="day-cell" style="background:#f8f4ec;border-left:2px solid #d4a843;"' + click + '><div class="cell-stack">'
+         + '<span style="font-size:10px;line-height:1.2;">' + parts + '</span>'
+         + '<span style="font-weight:700;color:' + netColor + ';font-size:12px;margin-top:2px;">' + (net>=0?"+":"") + fmtInt(net) + '</span>'
+         + '<span class="eur" style="color:' + netColor + ';">' + (netVal>=0?"+":"") + fmtEur(netVal) + '</span>'
+         + '</div></td>';
+  }
+  function renderRowCells(r) {
+    let cellsHtml = "";
+    let carryU = null, carryV = null;
+    LAYOUT.forEach(c => {
+      if (c.type === "day") {
+        const inData = DAYS.indexOf(c.day) !== -1;
+        let u, v, carried = false;
+        if (inData) {
+          u = r["u_"+c.day] != null ? r["u_"+c.day] : 0;
+          v = r["v_"+c.day] != null ? r["v_"+c.day] : 0;
+          carryU = u; carryV = v;
+        } else if (carryU != null) {
+          u = carryU; v = carryV; carried = true;
+        } else {
+          u = null; v = null;  // sin dato anterior, celda vacía
+        }
+        cellsHtml += dayCellHtml(u, v, dayClsFor(c.day), r.spec, c.day, r["entr_"+c.day] || 0, r["sal_"+c.day] || 0, r.minimo, carried);
+      } else {
+        const mv = c.dayOnly ? movOfActiveDayOrMonth(r) : movOfMonth(r, c.monthMM);
+        cellsHtml += varMesCellHtml(mv.ent, mv.sal, mv.ent_v, mv.sal_v, r.spec, c.monthMM, c.dayOnly);
+      }
+    });
+    return cellsHtml;
+  }
+
+  rows.forEach(r => {
+    h += '<tr>';
+    h += specCell(r.spec, true);
+    h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+    h += '<td class="left sup" title="' + escapeHtml(r.sup) + '">' + escapeHtml(r.sup) + '</td>';
+    h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
+    h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+    h += renderRowCells(r);
+    h += "</tr>";
+  });
+
+  // Others row (clickable to expand)
+  const ou = DATA.others_stock_u;
+  const ov = DATA.others_stock_v;
+  const lowSpecs = DATA.stock_low || [];
+  const expChar = othersExpanded.stock ? "▼" : "▶";
+  // Filtrar low specs por search
+  const lowFiltered = filterRows(lowSpecs, q);
+  // Si search activo y hay matches en low, auto-expandir
+  const autoExpand = q && lowFiltered.length > 0;
+  const isExpanded = othersExpanded.stock || autoExpand;
+  const expCharFinal = isExpanded ? "▼" : "▶";
+
+  // Si hay filtro de búsqueda, recalcular Others stock_u/v sumando solo los low filtrados
+  const ouEff = {}, ovEff = {};
+  if (q) {
+    DAYS.forEach(d => {
+      let u=0, v=0;
+      lowFiltered.forEach(r => { u += (r["u_"+d]||0); v += (r["v_"+d]||0); });
+      ouEff[d] = u; ovEff[d] = v;
+    });
+  } else {
+    Object.assign(ouEff, ou); Object.assign(ovEff, ov);
+  }
+  h += '<tr class="others-row" onclick="toggleOthers(\'stock\')" style="cursor:pointer;">';
+  h += '<td class="left spec">' + expCharFinal + ' Others (' + lowFiltered.length + (q?"/"+lowSpecs.length:"") + ')</td>';
+  h += '<td class="left desc">SPECs &lt;= ' + THRESHOLD + ' EUR/u — click para ' + (isExpanded ? 'colapsar' : 'expandir') + '</td>';
+  h += '<td class="left sup">&mdash;</td>';
+  h += '<td class="left tipo">&mdash;</td>';
+  h += '<td class="cu">&lt; ' + THRESHOLD + ' EUR</td>';
+  LAYOUT.forEach(c => {
+    if (c.type === "day") {
+      h += dayCellHtml(ouEff[c.day]||0, ovEff[c.day]||0, dayClsFor(c.day));
+    } else {
+      // Others Var por mes: sumar totales de others_*_dia (qty) y _val (EUR)
+      let oE=0, oS=0, oEv=0, oSv=0;
+      (DATA.mov_days||[]).forEach(d => {
+        if (d.split("-")[1] === c.monthMM && (!c.dayOnly || d === c.dayOnly)) {
+          oE += (DATA.others_entradas_dia||{})[d] || 0;
+          oS += (DATA.others_salidas_dia||{})[d] || 0;
+          oEv += (DATA.others_entradas_dia_val||{})[d] || 0;
+          oSv += (DATA.others_salidas_dia_val||{})[d] || 0;
+        }
+      });
+      h += varMesCellHtml(oE, oS, oEv, oSv);
+    }
+  });
+  h += "</tr>";
+
+  // Si expandido, mostrar low specs
+  if (isExpanded) {
+    const sortedLow = sortRows(lowFiltered, sortCol, ss.dir);
+    sortedLow.forEach(r => {
+      h += '<tr>';
+      h += specCell(r.spec, true);
+      h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+      h += '<td class="left sup" title="' + escapeHtml(r.sup) + '">' + escapeHtml(r.sup) + '</td>';
+      h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
+      h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+      h += renderRowCells(r);
+      h += "</tr>";
+    });
+  }
+
+  // GAP row
+  const g = DATA.gap_row;
+  h += '<tr class="gap-row">';
+  h += '<td class="left spec">GAP NO EXPLICADO</td>';
+  h += '<td class="left desc" title="' + escapeHtml(g.desc) + '">' + escapeHtml(g.desc) + '</td>';
+  h += '<td class="left sup">' + escapeHtml(g.sup) + '</td>';
+  h += '<td class="left tipo">' + escapeHtml(g.tipo) + '</td>';
+  h += '<td class="cu">&mdash;</td>';
+  LAYOUT.forEach(c => {
+    if (c.type === "day") h += dayCellHtml(0, g["v_"+c.day]||0, dayClsFor(c.day));
+    else h += '<td class="day-cell" style="background:#fef0e6;border-left:2px solid #d4a843;text-align:center;color:#6b8088;">&mdash;</td>';
+  });
+  h += "</tr>";
+
+  h += "</tbody>";
+
+  // Footer: total inferido y real (donde aplique) por dia
+  h += "<tfoot>";
+  // Helper: variación total de un mes (suma todos los SPECs + others)
+  function totalVarOfMonth(monthMM, dayOnly) {
+    let tE=0, tS=0, tEv=0, tSv=0;
+    DATA.stock.forEach(rr => {
+      (DATA.mov_days||[]).forEach(d => {
+        if (d.split("-")[1] === monthMM && (!dayOnly || d === dayOnly)) {
+          const e = rr["entr_"+d]||0, s = rr["sal_"+d]||0;
+          tE += e; tS += s;
+          tEv += e * (rr.cu||0); tSv += s * (rr.cu||0);
+        }
+      });
+    });
+    (DATA.mov_days||[]).forEach(d => {
+      if (d.split("-")[1] === monthMM && (!dayOnly || d === dayOnly)) {
+        tE += (DATA.others_entradas_dia||{})[d] || 0;
+        tS += (DATA.others_salidas_dia||{})[d] || 0;
+        tEv += (DATA.others_entradas_dia_val||{})[d] || 0;
+        tSv += (DATA.others_salidas_dia_val||{})[d] || 0;
+      }
+    });
+    return {ent:tE, sal:tS, ent_v:tEv, sal_v:tSv};
+  }
+
+  // Cuando hay filtro, sumar solo rows visibles
+  const filteredTotByDay = {};
+  if (q) {
+    DAYS.forEach(d => {
+      let t = 0;
+      rows.forEach(rr => { t += (rr["v_"+d]||0); });
+      lowFiltered.forEach(rr => { t += (rr["v_"+d]||0); });
+      filteredTotByDay[d] = t;
+    });
+  }
+  h += "<tr><td colspan='5' class='left'>TOTAL " + (q?"FILTRADO":"INFERIDO (A+B+C+D)") + "</td>";
+  LAYOUT.forEach(c => {
+    if (c.type === "day") {
+      if (DAYS.indexOf(c.day) === -1) {
+        h += '<td class="day-cell ' + dayClsFor(c.day) + '" style="background:white;color:#cdd5d9;text-align:center;">·</td>';
+        return;
+      }
+      const v = q ? (filteredTotByDay[c.day] || 0) : (DATA.totales_inferred[c.day] || 0);
+      h += '<td class="day-cell ' + dayClsFor(c.day) + '"><div class="cell-stack"><span class="uds">' + fmtEur(v) + '</span></div></td>';
+    } else {
+      const mv = totalVarOfMonth(c.monthMM, c.dayOnly);
+      const netMes = mv.ent_v - mv.sal_v;
+      const netColor = netMes > 0 ? "#0d7a5f" : (netMes < 0 ? "#c0492f" : "#6b8088");
+      h += '<td class="day-cell" style="background:#f8f4ec;border-left:2px solid #d4a843;"><div class="cell-stack">';
+      h += '<span style="font-weight:700;color:' + netColor + ';">' + (netMes>=0?"+":"") + fmtEur(netMes) + '</span>';
+      h += '</div></td>';
+    }
+  });
+  h += "</tr>";
+  h += "<tr><td colspan='5' class='left diff-row'>TOTAL REAL (SAP, solo dias con fichero)</td>";
+  LAYOUT.forEach(c => {
+    if (c.type === "day") {
+      const r = DATA.totales_real[c.day];
+      if (r) {
+        const inf = DATA.totales_inferred[c.day] || 0;
+        const diff = inf - r;
+        const color = Math.abs(diff) < 100 ? "#0d7a5f" : (Math.abs(diff) < 1000 ? "#b8862f" : "#c0492f");
+        h += '<td class="day-cell diff-row ' + dayClsFor(c.day) + '"><div class="cell-stack"><span class="uds" style="color:'+color+';">' + fmtEur(r) + '</span><span class="eur" style="color:'+color+';">diff ' + (diff>=0?"+":"") + fmtEur(diff) + '</span></div></td>';
+      } else {
+        h += '<td class="day-cell diff-row ' + dayClsFor(c.day) + '">&mdash;</td>';
+      }
+    } else {
+      h += '<td class="day-cell diff-row" style="background:#f8f4ec;text-align:center;color:#6b8088;">&mdash;</td>';
+    }
+  });
+  h += "</tr>";
+  h += "</tfoot>";
+
+  document.getElementById("table-stock").innerHTML = h;
+  return rows.length;
+}
+
+function renderMov(tabKey, q) {
+  const ss = sortState[tabKey];
+  const sortMode = getDaySortMode();
+  let sortCol = ss.col;
+  if (sortMode === "val" && sortCol.startsWith("u_")) sortCol = "v_" + sortCol.substring(2);
+  if (sortMode === "uds" && sortCol.startsWith("v_")) sortCol = "u_" + sortCol.substring(2);
+  let rows = filterRows(DATA[tabKey], q);
+  // Recalcular totales del mes activo
+  const MOV_DAYS = getMonthDaysForMov();
+  rows = rows.map(r => {
+    let mu = 0, mv = 0;
+    MOV_DAYS.forEach(d => { mu += (r["u_"+d]||0); mv += (r["v_"+d]||0); });
+    return Object.assign({}, r, {uds_m: mu, val_m: mv});
+  }).filter(r => r.uds_m > 0);  // sólo filas con movimiento en el mes/día activo
+  // Re-mapear sort key uds/val a uds_m/val_m
+  let sortColEff = sortCol;
+  if (sortCol === "uds") sortColEff = "uds_m";
+  if (sortCol === "val") sortColEff = "val_m";
+  rows = sortRows(rows, sortColEff, ss.dir);
+  const others = DATA["others_" + tabKey];
+  const othersDia = DATA["others_" + tabKey + "_dia"] || {};
+  const totalesDia = tabKey === "entradas" ? DATA.compras_totales_dia : DATA.salidas_totales_dia;
+  const lbl = tabKey === "entradas" ? "Entradas" : "Salidas";
+  const color = tabKey === "entradas" ? "#0d7a5f" : "#c0492f";
+
+  const cols = [
+    {key: "spec", label: "SPEC"}, {key: "desc", label: "Descripcion"},
+    {key: "sup", label: "Proveedor"}, {key: "tipo", label: "Tipo"},
+    {key: "cu", label: "Coste/u", num: true},
+    {key: "uds", label: "Total uds", num: true, dayCls: "day last"},
+    {key: "val", label: "Total val", num: true, dayCls: "day last"},
+  ];
+  MOV_DAYS.forEach(d => cols.push({key: "u_" + d, label: d, num: true, dayCls: "day"}));
+
+  let h = makeHeader(cols, tabKey);
+  h += "<tbody>";
+  let totU = 0, totV = 0;
+  rows.forEach(r => {
+    totU += r.uds_m||0; totV += r.val_m||0;
+    h += "<tr>";
+    h += specCell(r.spec, true);
+    h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+    h += '<td class="left sup">' + escapeHtml(r.sup) + '</td>';
+    h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
+    h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+    h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtInt(r.uds_m) + '</td>';
+    h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtEur(r.val_m) + '</td>';
+    MOV_DAYS.forEach(d => {
+      const u = r["u_"+d] || 0;
+      const v = r["v_"+d] || 0;
+      const cls = (u===0||!u) ? "uds zero" : "uds";
+      const cellColor = u > 0 ? color : "#bccccf";
+      const clickable = u > 0 ? ' onclick="showDayDetail(\''+jsesc(r.spec)+'\',\''+d+'\')" style="cursor:pointer;"' : '';
+      h += '<td class="day-cell"' + clickable + '><div class="cell-stack">'
+         + '<span class="'+cls+'" style="color:'+(u>0?cellColor:"")+';">' + fmtInt(u) + '</span>'
+         + '<span class="eur">' + fmtEur(v) + '</span></div></td>';
+    });
+    h += "</tr>";
+  });
+  // Others (expandible) — sumar sólo días del mes activo
+  const lowList = DATA[tabKey + "_low"] || [];
+  const lowFilt = filterRows(lowList, q).map(r => {
+    let mu=0, mv=0;
+    MOV_DAYS.forEach(d => { mu += (r["u_"+d]||0); mv += (r["v_"+d]||0); });
+    return Object.assign({}, r, {uds_m: mu, val_m: mv});
+  });
+  let othersMU = 0, othersMV = 0;
+  MOV_DAYS.forEach(d => { othersMU += (othersDia[d] || 0); });
+  lowFilt.forEach(r => { othersMV += r.val_m||0; });
+  const autoExp = q && lowFilt.length > 0;
+  const isExp = othersExpanded[tabKey] || autoExp;
+  const expCh = isExp ? "▼" : "▶";
+  h += '<tr class="others-row" onclick="toggleOthers(\'' + tabKey + '\')" style="cursor:pointer;">';
+  h += '<td class="left spec">' + expCh + ' Others (' + lowList.length + ')</td>';
+  h += '<td class="left desc">SPECs &lt;= ' + THRESHOLD + ' EUR/u — click para ' + (isExp ? 'colapsar' : 'expandir') + '</td>';
+  h += '<td class="left sup">&mdash;</td><td class="left tipo">&mdash;</td>';
+  h += '<td class="cu">&lt; ' + THRESHOLD + ' EUR</td>';
+  h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtInt(othersMU) + '</td>';
+  h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtEur(othersMV) + '</td>';
+  MOV_DAYS.forEach(d => {
+    const u = othersDia[d] || 0;
+    h += '<td class="day-cell"><div class="cell-stack"><span class="uds' + (u===0?" zero":"") + '">' + fmtInt(u) + '</span></div></td>';
+  });
+  h += "</tr>";
+  totU += othersMU; totV += othersMV;
+
+  // Expandidos
+  if (isExp) {
+    const sortedLow = sortRows(lowFilt.filter(r => r.uds_m > 0), sortColEff, ss.dir);
+    sortedLow.forEach(r => {
+      h += '<tr style="background:#fafafa;">';
+      h += specCell(r.spec, true);
+      h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+      h += '<td class="left sup" title="' + escapeHtml(r.sup) + '">' + escapeHtml(r.sup) + '</td>';
+      h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
+      h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+      h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtInt(r.uds_m) + '</td>';
+      h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtEur(r.val_m) + '</td>';
+      MOV_DAYS.forEach(d => {
+        const u = r["u_"+d] || 0;
+        const v = r["v_"+d] || 0;
+        const cls = (u===0||!u) ? "uds zero" : "uds";
+        const cellColor = u > 0 ? color : "#bccccf";
+        const clickable = u > 0 ? ' onclick="showDayDetail(\''+jsesc(r.spec)+'\',\''+d+'\')" style="cursor:pointer;"' : '';
+        h += '<td class="day-cell"' + clickable + '><div class="cell-stack">'
+           + '<span class="'+cls+'" style="color:'+(u>0?cellColor:"")+';">' + fmtInt(u) + '</span>'
+           + '<span class="eur">' + fmtEur(v) + '</span></div></td>';
+      });
+      h += "</tr>";
+    });
+  }
+
+  h += "</tbody><tfoot><tr>";
+  const periodTxt = window._activeDay ? lblPretty(window._activeDay) : (MES_LONG[window._activeMonth] + " " + DASH_YEAR);
+  h += '<td colspan="5" class="left">TOTAL ' + lbl.toUpperCase() + ' ' + periodTxt + '</td>';
+  h += '<td class="day-cell last" style="color:'+color+';">' + fmtInt(totU) + '</td>';
+  h += '<td class="day-cell last" style="color:'+color+';">' + fmtEur(totV) + '</td>';
+  MOV_DAYS.forEach(d => {
+    const u = totalesDia[d] || 0;
+    h += '<td class="day-cell" style="color:'+color+';">' + fmtInt(u) + '</td>';
+  });
+  h += "</tr></tfoot>";
+  document.getElementById("table-" + tabKey).innerHTML = h;
+  return rows.length + 1;
+}
+
+function renderCliente(q) {
+  const ss = sortState.cliente;
+  const mode = getSalidasMode();
+  const isRaw = (mode === "raw");
+  const MOV_DAYS = getMonthDaysForMov();
+  let rows = (isRaw ? (DATA.salidas_cliente_raw || []) : (DATA.salidas_cliente || [])).map(r => {
+    let mq = 0, mv = 0;
+    MOV_DAYS.forEach(d => { mq += (r["qty_"+d]||0); mv += (r["val_"+d]||0); });
+    return Object.assign({}, r, {qty_m: mq, val_m: mv});
+  }).filter(r => r.qty_m > 0);
+  if (q) {
+    const ql = q.toLowerCase();
+    rows = rows.filter(r => (r.spec||"").toLowerCase().includes(ql) || (r.desc||"").toLowerCase().includes(ql) || (r.cliente||"").toLowerCase().includes(ql) || (r.sup||"").toLowerCase().includes(ql));
+  }
+  let sortColEff = ss.col;
+  if (ss.col === "qty") sortColEff = "qty_m";
+  if (ss.col === "val") sortColEff = "val_m";
+  rows = sortRows(rows, sortColEff, ss.dir);
+
+  let cols;
+  if (isRaw) {
+    cols = [
+      {key: "cliente", label: "Cliente"}, {key: "spec", label: "Raw SPEC"},
+      {key: "desc", label: "Descripción raw"},
+      {key: "sup", label: "Proveedor"},
+      {key: "coste_unit", label: "Coste/u", num: true},
+      {key: "qty", label: "Uds raw", num: true, dayCls: "day last"},
+      {key: "val", label: "Valor €", num: true, dayCls: "day last"},
+      {key: "via", label: "Vía (WIPs)"},
+    ];
+  } else {
+    cols = [
+      {key: "cliente", label: "Cliente"}, {key: "spec", label: "SPEC emitido"},
+      {key: "desc", label: "Descripcion"},
+      {key: "coste_unit", label: "Coste/u", num: true},
+      {key: "qty", label: "Uds", num: true, dayCls: "day last"},
+      {key: "val", label: "Valor", num: true, dayCls: "day last"},
+      {key: "lotes", label: "Lote / SN"},
+    ];
+  }
+  let h = makeHeader(cols, "cliente");
+  h += "<tbody>";
+  let totU = 0, totV = 0;
+  rows.forEach(r => {
+    totU += r.qty_m||0; totV += r.val_m||0;
+    h += "<tr>";
+    h += '<td class="left cliente">' + escapeHtml(r.cliente) + '</td>';
+    h += specCell(r.spec, true);
+    h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+    if (isRaw) h += '<td class="left sup" style="font-size:10px;color:#3f5a63;">' + escapeHtml(r.sup||"") + '</td>';
+    h += '<td class="cu">' + fmtEur(r.coste_unit) + '</td>';
+    h += '<td class="day-cell last" style="color:#c0492f;font-weight:600;">' + fmtInt(r.qty_m) + '</td>';
+    h += '<td class="day-cell last" style="color:#c0492f;font-weight:600;">' + fmtEur(r.val_m) + '</td>';
+    h += '<td class="left" style="font-size:10px;color:#3f5a63;">' + escapeHtml(isRaw ? (r.via||"") : (r.lotes||"")) + '</td>';
+    h += "</tr>";
+  });
+  const periodTxt = window._activeDay ? lblPretty(window._activeDay) : (MES_LONG[window._activeMonth] + " " + DASH_YEAR);
+  h += "</tbody><tfoot><tr>";
+  h += '<td colspan="' + (isRaw ? 5 : 4) + '" class="left">TOTAL ' + (isRaw ? "SALIDAS A CLIENTES POR RAW" : "SALIDAS A CLIENTES (WIP)") + ' ' + periodTxt + '</td>';
+  h += '<td class="day-cell last" style="color:#c0492f;">' + fmtInt(totU) + '</td>';
+  h += '<td class="day-cell last" style="color:#c0492f;">' + fmtEur(totV) + '</td>';
+  h += '<td>&mdash;</td></tr></tfoot>';
+  document.getElementById("table-cliente").innerHTML = h;
+  return rows.length;
+}
+
+function renderSimulacion(q) {
+  const sim = DATA.simulation || {};
+  const months = DATA.sim_months || ["Jun-26","Jul-26","Ago-26","Sep-26","Oct-26","Nov-26","Dic-26"];
+  const specs = Object.keys(sim);
+
+  if (specs.length === 0) {
+    document.getElementById("sim-summary").innerHTML = '<div style="background:#fef3e2;border-left:4px solid #b8862f;padding:14px;border-radius:6px;margin:14px 0;font-size:13px;">No hay datos de simulación. Comprueba que <strong>Inventario_Leaseir_Live.xlsx</strong> tiene forecast en la pestaña 1.</div>';
+    document.getElementById("table-simulacion").innerHTML = "";
+    return 0;
+  }
+
+  // Filtrar por busqueda
+  let fs = specs;
+  if (q) {
+    const ql = q.toLowerCase();
+    fs = specs.filter(sp => {
+      const r = sim[sp];
+      return sp.toLowerCase().includes(ql) || (r.desc||"").toLowerCase().includes(ql) || (r.sup||"").toLowerCase().includes(ql) || (r.tipo||"").toLowerCase().includes(ql);
+    });
+  }
+  fs.forEach(sp => {
+    const r = sim[sp];
+    r._total_uds = months.reduce((s, m) => s + (r.months[m]?.compra || 0), 0);
+    r._total_eur = r._total_uds * (r.cu || 0);
+    r._stock_eur = r.stock_29may * (r.cu || 0);
+  });
+
+  // Split high/low
+  const THRESH = DATA.cost_threshold || 50;
+  const fsHigh = fs.filter(sp => (sim[sp].cu || 0) > THRESH);
+  const fsLow = fs.filter(sp => (sim[sp].cu || 0) <= THRESH);
+  const autoExp = q && fsLow.length > 0 && fsLow.some(sp => true);
+  const isExpSim = (window._othersExpSim || autoExp);
+
+  // Sort
+  const ss = sortState.simulacion;
+  const dir = ss.dir === "asc" ? 1 : -1;
+  const col = ss.col;
+  const sortFn = (a, b) => {
+    const ra = sim[a], rb = sim[b];
+    let va, vb;
+    if (col === "spec") { return a.localeCompare(b) * dir; }
+    else if (col === "desc") { return (ra.desc||"").localeCompare(rb.desc||"") * dir; }
+    else if (col === "sup") { return (ra.sup||"").localeCompare(rb.sup||"") * dir; }
+    else if (col === "cu") { va = ra.cu||0; vb = rb.cu||0; }
+    else if (col === "stock_29may") { va = ra.stock_29may; vb = rb.stock_29may; }
+    else if (col === "minimo") { va = ra.minimo||0; vb = rb.minimo||0; }
+    else if (col === "total_year_eur") { va = ra._total_eur; vb = rb._total_eur; }
+    else if (col.startsWith("stock_")) { const m = col.substring(6); va = ra.months[m]?.stock_fin||0; vb = rb.months[m]?.stock_fin||0; }
+    else if (col.startsWith("buy_")) { const m = col.substring(4); va = ra.months[m]?.compra||0; vb = rb.months[m]?.compra||0; }
+    else if (col.startsWith("sal_")) { const m = col.substring(4); va = ra.months[m]?.demanda||0; vb = rb.months[m]?.demanda||0; }
+    else { va = ra._total_eur; vb = rb._total_eur; }
+    return (va - vb) * dir;
+  };
+  fsHigh.sort(sortFn);
+  fsLow.sort(sortFn);
+
+  // Totales globales
+  let totBuyEur = 0, totBuyUds = 0, totStock29 = 0, totSalEur = 0, totSalUds = 0;
+  const tByM = {};
+  months.forEach(m => {
+    let u=0, e=0, sE=0, sU=0, sEur=0;
+    [...fsHigh, ...fsLow].forEach(sp => {
+      const r = sim[sp];
+      const c = r.months[m]?.compra||0;
+      const sf = r.months[m]?.stock_fin||0;
+      const d = r.months[m]?.demanda||0;
+      u += c; e += c*(r.cu||0); sE += sf*(r.cu||0);
+      sU += d; sEur += d*(r.cu||0);
+    });
+    tByM[m] = {uds:u, eur:e, stockEur:sE, salUds:sU, salEur:sEur};
+    totBuyEur += e; totBuyUds += u;
+    totSalEur += sEur; totSalUds += sU;
+  });
+  [...fsHigh, ...fsLow].forEach(sp => { totStock29 += sim[sp]._stock_eur; });
+
+  // Summary cards arriba
+  let h = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;">';
+  h += simCard("SPECs planificación", fs.length, fsHigh.length + " >50€ + " + fsLow.length + " Others", "#0a2730", "#e8eef0");
+  h += simCard("Stock " + lblPretty(LAST) + " (mov.)", fmtEur(totStock29), "(solo SPECs con movimiento)", "#074c5b", "#e8f5f8");
+  h += simCard("Compras Jun-Dic", fmtEur(totBuyEur), fmtInt(totBuyUds)+" uds", "#bd6b2e", "#fef3e2");
+  h += simCard("Salidas Jun-Dic", fmtEur(totSalEur), fmtInt(totSalUds)+" uds", "#0a8aad", "#e8f5f8");
+  h += '</div>';
+  // Bandas mensuales
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;margin-bottom:14px;">';
+  months.forEach(m => {
+    const x = tByM[m];
+    const intensity = totBuyEur > 0 ? Math.min(1, x.eur / (totBuyEur / months.length) / 2) : 0;
+    h += '<div style="flex:1;min-width:120px;padding:8px;background:rgba(141,197,209,' + (intensity * 0.5).toFixed(2) + ');border:1px solid #cfe5ea;border-radius:4px;">';
+    h += '<div style="font-weight:600;color:#0a2730;">' + m + '</div>';
+    h += '<div style="color:#074c5b;font-weight:700;font-size:12px;">Stock: ' + fmtEur(x.stockEur) + '</div>';
+    h += '<div style="font-size:11px;color:#bd6b2e;font-weight:600;">↑ Compra: ' + fmtEur(x.eur) + '</div>';
+    h += '<div style="font-size:11px;color:#0a8aad;font-weight:600;">↓ Salida: ' + fmtEur(x.salEur) + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  document.getElementById("sim-summary").innerHTML = h;
+
+  function simCard(lbl, val, sub, fg, bg) {
+    let c = '<div style="padding:10px 14px;background:'+bg+';border-left:4px solid '+fg+';border-radius:6px;">';
+    c += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;letter-spacing:0.5px;color:'+fg+';">' + lbl + '</div>';
+    c += '<div style="font-size:18px;font-weight:700;color:'+fg+';margin-top:4px;">' + val + '</div>';
+    if (sub) c += '<div style="font-size:11px;color:#6b8088;">' + sub + '</div>';
+    return c + '</div>';
+  }
+
+  function sInd(c) {
+    if (ss.col !== c) return '<span class="sort-ind">◇</span>';
+    return ss.dir === "asc" ? '<span class="sort-ind">▲</span>' : '<span class="sort-ind">▼</span>';
+  }
+
+  // Tabla con misma estructura que table-stock (sticky cols + day-cell + cell-stack)
+  let t = '<thead><tr>';
+  t += '<th class="sortable" onclick="setSimSort(\'spec\')">SPEC ' + sInd("spec") + '</th>';
+  t += '<th class="sortable" onclick="setSimSort(\'desc\')">Descripción ' + sInd("desc") + '</th>';
+  t += '<th class="sortable" onclick="setSimSort(\'sup\')">Proveedor ' + sInd("sup") + '</th>';
+  t += '<th>Tipo</th>';
+  t += '<th class="num sortable" onclick="setSimSort(\'cu\')">Coste/u ' + sInd("cu") + '</th>';
+  t += '<th class="num sortable" onclick="setSimSort(\'stock_29may\')">Stock ' + lblPretty(LAST) + ' ' + sInd("stock_29may") + '</th>';
+  t += '<th class="num sortable" onclick="setSimSort(\'minimo\')">Mín ' + sInd("minimo") + '</th>';
+  months.forEach((m, i) => {
+    const cls = (i === 0) ? "day first" : (i === months.length - 1 ? "day last" : "day");
+    t += '<th colspan="3" class="' + cls + '" style="text-align:center;">' + m + '</th>';
+  });
+  t += '<th class="num sortable" onclick="setSimSort(\'total_year_eur\')">TOTAL año ' + sInd("total_year_eur") + '</th>';
+  t += '</tr><tr>';
+  t += '<th colspan="7" style="background:#f0f2f5;"></th>';
+  months.forEach(m => {
+    t += '<th class="num sortable" style="background:#cfe5ea;color:#0a2730;font-size:10px;" onclick="setSimSort(\'stock_' + m + '\')">Stock ' + sInd("stock_"+m) + '</th>';
+    t += '<th class="num sortable" style="background:#fef3e2;color:#bd6b2e;font-size:10px;" onclick="setSimSort(\'buy_' + m + '\')">↑ Compra ' + sInd("buy_"+m) + '</th>';
+    t += '<th class="num sortable" style="background:#e8f5f8;color:#0a8aad;font-size:10px;" onclick="setSimSort(\'sal_' + m + '\')">↓ Salida ' + sInd("sal_"+m) + '</th>';
+  });
+  t += '<th style="background:#f0f2f5;"></th>';
+  t += '</tr></thead><tbody>';
+
+  function rowFor(sp) {
+    const r = sim[sp];
+    const cu = r.cu || 0;
+    let row = '<tr>';
+    row += '<td class="left spec" onclick="showChart(\'' + jsesc(sp) + '\')">' + escapeHtml(sp) + '</td>';
+    row += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+    row += '<td class="left sup" title="' + escapeHtml(r.sup||"") + '">' + escapeHtml(r.sup||"") + '</td>';
+    row += '<td class="left tipo">' + escapeHtml(r.tipo||"") + '</td>';
+    row += '<td class="cu">' + fmtEur(cu) + '</td>';
+    row += '<td class="day-cell"><div class="cell-stack"><span class="uds">' + fmtInt(r.stock_29may) + '</span><span class="eur">' + fmtEur(r._stock_eur) + '</span></div></td>';
+    row += '<td class="day-cell" style="color:#6b8088;font-style:italic;">' + (r.minimo != null ? fmtInt(r.minimo) : '—') + '</td>';
+    months.forEach((m, i) => {
+      const md = r.months[m] || {};
+      const sf = md.stock_fin || 0;
+      const c = md.compra || 0;
+      const d = md.demanda || 0;
+      const min = r.minimo || 0;
+      let bg = '#e3f1ec'; // OK green
+      let fg = '#0d7a5f';
+      if (min > 0 && sf < min) { bg = '#f0c4b8'; fg = '#7d2818'; }
+      else if (min > 0 && sf < min * 1.2) { bg = '#dbe6e8'; fg = '#b8862f'; }
+      const dayCls = (i === months.length - 1) ? "day-cell last" : "day-cell";
+      // Stock
+      row += '<td class="' + dayCls + '" style="background:' + bg + ';">';
+      row += '<div class="cell-stack"><span class="uds" style="color:' + fg + ';">' + fmtInt(sf) + '</span><span class="eur" style="color:' + fg + ';">' + fmtEur(sf * cu) + '</span></div></td>';
+      // Compra
+      if (c > 0) {
+        row += '<td class="' + dayCls + '" style="background:#bd6b2e;color:#fff;">';
+        row += '<div class="cell-stack"><span class="uds" style="color:#fff;">' + fmtInt(c) + '</span><span class="eur" style="color:#fff;opacity:0.9;">' + fmtEur(c * cu) + '</span></div></td>';
+      } else {
+        row += '<td class="' + dayCls + '" style="color:#bccccf;">·</td>';
+      }
+      // Salida
+      if (d > 0) {
+        row += '<td class="' + dayCls + '" style="background:#e8f5f8;">';
+        row += '<div class="cell-stack"><span class="uds" style="color:#0a8aad;">' + fmtInt(d) + '</span><span class="eur" style="color:#0a8aad;">' + fmtEur(d * cu) + '</span></div></td>';
+      } else {
+        row += '<td class="' + dayCls + '" style="color:#bccccf;">·</td>';
+      }
+    });
+    row += '<td class="day-cell" style="border-left:2px solid #cfe5ea;background:#e6eff1;">';
+    row += '<div class="cell-stack"><span class="uds" style="color:#0a2730;font-weight:700;">' + fmtEur(r._total_eur) + '</span><span class="eur">' + fmtInt(r._total_uds) + ' uds</span></div></td>';
+    row += '</tr>';
+    return row;
+  }
+
+  // Filas SPECs >50€
+  fsHigh.forEach(sp => { t += rowFor(sp); });
+
+  // Fila Others (clickable)
+  if (fsLow.length > 0) {
+    const exp = isExpSim ? "▼" : "▶";
+    let totLowStock29 = 0, totLowYear = 0;
+    fsLow.forEach(sp => { totLowStock29 += sim[sp]._stock_eur; totLowYear += sim[sp]._total_eur; });
+    t += '<tr class="others-row" onclick="window._othersExpSim=!window._othersExpSim; rerender();" style="cursor:pointer;">';
+    t += '<td class="left spec">' + exp + ' Others (' + fsLow.length + ')</td>';
+    t += '<td class="left desc">SPECs ≤ ' + THRESH + ' EUR/u — click para ' + (isExpSim ? "colapsar" : "expandir") + '</td>';
+    t += '<td class="left sup">—</td><td class="left tipo">—</td>';
+    t += '<td class="cu">&lt; ' + THRESH + ' €</td>';
+    t += '<td class="day-cell"><div class="cell-stack"><span class="uds">—</span><span class="eur">' + fmtEur(totLowStock29) + '</span></div></td>';
+    t += '<td class="day-cell">—</td>';
+    months.forEach((m, i) => {
+      const dayCls = (i === months.length - 1) ? "day-cell last" : "day-cell";
+      let stockEurM = 0, buyEurM = 0, salEurM = 0;
+      fsLow.forEach(sp => {
+        const r = sim[sp];
+        stockEurM += (r.months[m]?.stock_fin || 0) * (r.cu || 0);
+        buyEurM += (r.months[m]?.compra || 0) * (r.cu || 0);
+        salEurM += (r.months[m]?.demanda || 0) * (r.cu || 0);
+      });
+      t += '<td class="' + dayCls + '"><div class="cell-stack"><span class="uds">—</span><span class="eur">' + fmtEur(stockEurM) + '</span></div></td>';
+      t += '<td class="' + dayCls + '" style="' + (buyEurM > 0 ? 'background:#fef3e2;color:#bd6b2e;font-weight:600;' : '') + '"><div class="cell-stack"><span class="uds">' + (buyEurM>0?'•':'') + '</span><span class="eur">' + fmtEur(buyEurM) + '</span></div></td>';
+      t += '<td class="' + dayCls + '" style="' + (salEurM > 0 ? 'background:#e8f5f8;color:#0a8aad;font-weight:600;' : '') + '"><div class="cell-stack"><span class="uds">' + (salEurM>0?'•':'') + '</span><span class="eur">' + fmtEur(salEurM) + '</span></div></td>';
+    });
+    t += '<td class="day-cell" style="border-left:2px solid #cfe5ea;background:#e6eff1;"><div class="cell-stack"><span class="uds" style="color:#0a2730;font-weight:700;">' + fmtEur(totLowYear) + '</span></div></td>';
+    t += '</tr>';
+
+    // Filas expandidas
+    if (isExpSim) {
+      fsLow.forEach(sp => { t += rowFor(sp); });
+    }
+  }
+
+  // Fila TOTAL al pie
+  t += '<tr style="background:#dbe6e8;font-weight:700;">';
+  t += '<td colspan="5" class="left">TOTAL planificación</td>';
+  t += '<td class="day-cell" style="background:#dbe6e8;"><div class="cell-stack"><span class="uds" style="color:#0a2730;">' + fmtEur(totStock29) + '</span></div></td>';
+  t += '<td></td>';
+  months.forEach((m, i) => {
+    const x = tByM[m];
+    const dayCls = (i === months.length - 1) ? "day-cell last" : "day-cell";
+    t += '<td class="' + dayCls + '" style="background:#e6eff1;"><div class="cell-stack"><span class="uds" style="color:#0a2730;font-size:10px;">' + fmtEur(x.stockEur) + '</span></div></td>';
+    t += '<td class="' + dayCls + '" style="background:#fef3e2;color:#bd6b2e;font-weight:700;"><div class="cell-stack"><span class="uds" style="color:#bd6b2e;font-size:10px;">' + fmtEur(x.eur) + '</span></div></td>';
+    t += '<td class="' + dayCls + '" style="background:#e8f5f8;color:#0a8aad;font-weight:700;"><div class="cell-stack"><span class="uds" style="color:#0a8aad;font-size:10px;">' + fmtEur(x.salEur) + '</span></div></td>';
+  });
+  t += '<td class="day-cell" style="border-left:2px solid #cfe5ea;background:#dbe6e8;"><div class="cell-stack"><span class="uds" style="color:#0a2730;">' + fmtEur(totBuyEur) + '</span><span class="eur" style="color:#0a8aad;">↓ ' + fmtEur(totSalEur) + '</span></div></td>';
+  t += '</tr></tbody>';
+
+  document.getElementById("table-simulacion").innerHTML = t;
+  return fsHigh.length + (isExpSim ? fsLow.length : 1);
+}
+
+function rerender() {
+  const q = document.getElementById("search").value.trim();
+  const grpSort = document.getElementById("grp-sort");
+  if (currentTab === "stock") grpSort.classList.remove("hidden");
+  else grpSort.classList.add("hidden");
+  // Toggle Raw/WIP solo en salidas y cliente
+  const grpSal = document.getElementById("grp-salidas-vista");
+  if (grpSal) {
+    if (currentTab === "salidas" || currentTab === "cliente") grpSal.classList.remove("hidden");
+    else grpSal.classList.add("hidden");
+  }
+  // Selector mes: visible en stock/entradas/salidas/cliente
+  const grpMonth = document.getElementById("grp-month");
+  if (grpMonth) {
+    if (currentTab === "stock" || currentTab === "entradas" || currentTab === "salidas" || currentTab === "cliente") grpMonth.classList.remove("hidden");
+    else grpMonth.classList.add("hidden");
+  }
+  // Vista diaria/mensual: ocultar en entradas/salidas/cliente/simulacion (sólo stock)
+  const grpVista = document.getElementById("grp-vista");
+  if (grpVista) {
+    if (currentTab === "stock") grpVista.classList.remove("hidden");
+    else grpVista.classList.add("hidden");
+  }
+  updateMonthBar();
+  if (window._renderKpiCards) window._renderKpiCards();
+  // Resumen visual solo en Stock evolutivo
+  const resumenEl = document.getElementById("resumen-visual");
+  if (resumenEl) resumenEl.style.display = (currentTab === "stock") ? "" : "none";
+  // Inventario chart solo en Stock evolutivo + Simulacion
+  const invChartEl = document.getElementById("inventario-chart-container");
+  if (invChartEl) invChartEl.style.display = (currentTab === "stock" || currentTab === "simulacion") ? "" : "none";
+  let n;
+  if (currentTab === "stock") n = renderStock(q);
+  else if (currentTab === "cliente") n = renderCliente(q);
+  else if (currentTab === "simulacion") n = renderSimulacion(q);
+  else if (currentTab === "salidas") n = renderSalidas(q);
+  else n = renderMov(currentTab, q);
+  document.getElementById("rowcount").textContent = n + " filas";
+  if (window._renderInventarioChart && (currentTab === "stock" || currentTab === "simulacion")) window._renderInventarioChart();
+}
+
+function getSalidasMode() {
+  const r = document.querySelector('input[name=salidasmode]:checked');
+  return r ? r.value : "raw";
+}
+
+function renderSalidas(q) {
+  const mode = getSalidasMode();
+  if (mode === "raw") return renderMov("salidas", q);
+  // Modo WIP: renderizar tabla simple por SPEC emitido — filtrada por mes/día activo
+  const ss = sortState.salidas;
+  const MOV_DAYS = getMonthDaysForMov();
+  let rows = (DATA.salidas_wip || []).map(r => {
+    let mu = 0, mv = 0;
+    MOV_DAYS.forEach(d => { mu += (r["sal_"+d]||0); mv += (r["valsal_"+d]||0); });
+    return Object.assign({}, r, {uds_m: mu, val_m: mv});
+  }).filter(r => r.uds_m > 0);
+  if (q) {
+    const ql = q.toLowerCase();
+    rows = rows.filter(r => (r.spec||"").toLowerCase().includes(ql) || (r.desc||"").toLowerCase().includes(ql) || (r.sup||"").toLowerCase().includes(ql) || (r.clientes||"").toLowerCase().includes(ql));
+  }
+  let sortColEff = ss.col;
+  if (ss.col === "uds") sortColEff = "uds_m";
+  if (ss.col === "val") sortColEff = "val_m";
+  rows = sortRows(rows, sortColEff, ss.dir);
+  const color = "#c0492f";
+  const cols = [
+    {key: "spec", label: "SPEC emitido"},
+    {key: "desc", label: "Descripción"},
+    {key: "sup", label: "Proveedor"},
+    {key: "cu", label: "Coste/u", num: true},
+    {key: "uds", label: "Uds vendidas", num: true, dayCls: "day last"},
+    {key: "val", label: "Valor €", num: true, dayCls: "day last"},
+    {key: "clientes", label: "Clientes"},
+  ];
+  let h = makeHeader(cols, "salidas");
+  h += "<tbody>";
+  let totU = 0, totV = 0;
+  rows.forEach(r => {
+    totU += r.uds_m||0; totV += r.val_m||0;
+    h += "<tr>";
+    h += '<td class="left spec" onclick="showChart(\'' + jsesc(r.spec) + '\')">' + escapeHtml(r.spec) + '</td>';
+    h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
+    h += '<td class="left sup">' + escapeHtml(r.sup||"") + '</td>';
+    h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+    h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtInt(r.uds_m) + '</td>';
+    h += '<td class="day-cell last" style="color:'+color+';font-weight:600;">' + fmtEur(r.val_m) + '</td>';
+    h += '<td class="left" style="font-size:10px;color:#6b8088;">' + escapeHtml(r.clientes||"") + '</td>';
+    h += "</tr>";
+  });
+  const periodTxt = window._activeDay ? lblPretty(window._activeDay) : (MES_LONG[window._activeMonth] + " " + DASH_YEAR);
+  h += "</tbody><tfoot><tr>";
+  h += '<td colspan="4" class="left">TOTAL SALIDAS ' + periodTxt + ' (por SPEC emitido)</td>';
+  h += '<td class="day-cell last" style="color:'+color+';">' + fmtInt(totU) + '</td>';
+  h += '<td class="day-cell last" style="color:'+color+';">' + fmtEur(totV) + '</td>';
+  h += '<td>&mdash;</td></tr></tfoot>';
+  document.getElementById("table-salidas").innerHTML = h;
+  return rows.length;
+}
+
+document.querySelectorAll(".tab").forEach(t => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    currentTab = t.dataset.tab;
+    document.getElementById("tab-" + currentTab).classList.add("active");
+    rerender();
+  });
+});
+
+let chartInstance = null;
+function showChart(spec) {
+  const s = DATA.chart_series[spec];
+  if (!s) return;
+  document.getElementById("m-spec").textContent = spec;
+  document.getElementById("m-desc").textContent = (s.desc||"") + " | " + (s.sup||"-") + " | " + (s.tipo||"-") + " | " + fmtEur(s.cu) + "/u";
+  document.getElementById("modalChart").classList.add("show");
+  const ctx = document.getElementById("m-chart").getContext("2d");
+  if (chartInstance) chartInstance.destroy();
+
+  // Si tiene simulación, anadir proyección futura
+  const simSp = (DATA.simulation || {})[spec];
+  const months = DATA.sim_months || [];
+  let labels = [...s.labels];
+  let dataU = [...s.u_tot];
+  let dataV = [...s.val];
+  let dataUSim = new Array(s.labels.length).fill(null);
+  let dataVSim = new Array(s.labels.length).fill(null);
+  let dataBuyFuture = new Array(s.labels.length).fill(null);
+
+  // Compras históricas por día (verde) — extraído de DATA.entradas_detail
+  const histDetail = (DATA.entradas_detail || {})[spec] || {};
+  let dataBuyHist = s.labels.map(lbl => {
+    const entries = histDetail[lbl] || [];
+    const totQty = entries.reduce((sum, e) => sum + (e.qty || 0), 0);
+    return totQty > 0 ? totQty : null;
+  });
+  // Valor de cada compra histórica (para tooltip)
+  let dataBuyHistEur = s.labels.map(lbl => {
+    const entries = histDetail[lbl] || [];
+    return entries.reduce((sum, e) => sum + (e.val || 0), 0);
+  });
+
+  if (simSp) {
+    dataUSim[s.labels.length - 1] = s.u_tot[s.u_tot.length - 1];
+    dataVSim[s.labels.length - 1] = s.val[s.val.length - 1];
+    months.forEach(m => {
+      labels.push(m);
+      const sf = simSp.months[m]?.stock_fin || 0;
+      const c = simSp.months[m]?.compra || 0;
+      dataU.push(null);
+      dataV.push(null);
+      dataUSim.push(sf);
+      dataVSim.push(sf * (simSp.cu || 0));
+      dataBuyFuture.push(c);
+      dataBuyHist.push(null);
+      dataBuyHistEur.push(0);
+    });
+  }
+
+  // Línea horizontal del mínimo si existe
+  const minVal = (s.minimo != null && s.minimo > 0) ? s.minimo : ((simSp && simSp.minimo) || null);
+  const datasets = [
+    {label: "Stock real (uds)", data: dataU, borderColor: "#0a2730", backgroundColor: "rgba(48,84,150,0.15)", yAxisID: "y", tension: 0.2, borderWidth: 3, pointRadius: 4},
+    {label: "Stock projected (uds)", data: dataUSim, borderColor: "#0d7a5f", backgroundColor: "rgba(31,138,63,0.10)", yAxisID: "y", tension: 0.15, borderWidth: 2.5, pointRadius: 4, borderDash: [3, 3]},
+    {label: "Compras históricas (uds)", data: dataBuyHist, type: "bar", backgroundColor: "rgba(13,122,95,0.65)", borderColor: "#0d7a5f", yAxisID: "y", order: 6, _histEur: dataBuyHistEur},
+    {label: "Compras planificadas (uds)", data: dataBuyFuture, type: "bar", backgroundColor: "rgba(189,107,46,0.55)", borderColor: "#bd6b2e", yAxisID: "y", order: 5},
+    {label: "Valor (EUR)", data: dataV, borderColor: "#0a8aad", backgroundColor: "rgba(110,84,141,0.1)", yAxisID: "y1", tension: 0.2, borderWidth: 2, borderDash: [5, 5]},
+  ];
+  if (minVal != null) {
+    datasets.push({
+      label: "Mínimo (" + fmtInt(minVal) + " uds)",
+      data: labels.map(() => minVal),
+      borderColor: "#c0492f", backgroundColor: "rgba(192,73,47,0.05)",
+      borderWidth: 2, borderDash: [8, 4], pointRadius: 0, yAxisID: "y", tension: 0, fill: false
+    });
+  }
+  chartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: datasets
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, aspectRatio: 2.5,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        y: { type: "linear", position: "left", title: { display: true, text: "Unidades" }, beginAtZero: true },
+        y1: { type: "linear", position: "right", title: { display: true, text: "EUR" }, beginAtZero: true, grid: { drawOnChartArea: false } }
+      },
+      plugins: {
+        legend: { position: "top" },
+        tooltip: { callbacks: { label: ctx => {
+          const v = ctx.parsed.y;
+          if (ctx.dataset.label === "Valor (EUR)") return ctx.dataset.label + ": " + fmtEur(v);
+          if (ctx.dataset.label === "Compras históricas (uds)") {
+            const eur = (ctx.dataset._histEur || [])[ctx.dataIndex] || 0;
+            return ctx.dataset.label + ": " + fmtInt(v) + " (" + fmtEur(eur) + ")";
+          }
+          if (ctx.dataset.label === "Compras planificadas (uds)") {
+            const simSpLocal = (DATA.simulation || {})[spec];
+            const cu = simSpLocal ? (simSpLocal.cu || 0) : 0;
+            return ctx.dataset.label + ": " + fmtInt(v) + " (" + fmtEur(v * cu) + ")";
+          }
+          return ctx.dataset.label + ": " + fmtInt(v);
+        }}}
+      }
+    }
+  });
+}
+
+function closeChart() {
+  document.getElementById("modalChart").classList.remove("show");
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+}
+
+function showDayDetail(spec, day) {
+  const sInfo = DATA.chart_series[spec] || {};
+  const cu = sInfo.cu || 0;
+  let stockRow = (DATA.stock || []).find(r => r.spec === spec) || (DATA.stock_low || []).find(r => r.spec === spec);
+  const u_day = stockRow ? (stockRow["u_"+day] || 0) : 0;
+  const v_day = stockRow ? (stockRow["v_"+day] || 0) : 0;
+
+  const entradas = (DATA.entradas_detail[spec] && DATA.entradas_detail[spec][day]) || [];
+  const salidas = (DATA.salidas_detail[spec] && DATA.salidas_detail[spec][day]) || [];
+
+  // Calcular Raw vs Embebido usando inv_bom + DATA.wip_stocks
+  const invList = (DATA.inv_bom && DATA.inv_bom[spec]) || [];
+  function wipStockOnDay(wip, d) {
+    const ws = DATA.wip_stocks || {};
+    if (ws[d] && ws[d][wip] != null) return ws[d][wip];
+    // Fallback: día más cercano (preferir más reciente)
+    const anchors = Object.keys(ws).sort();
+    for (let i = anchors.length - 1; i >= 0; i--) {
+      const a = anchors[i];
+      if (ws[a] && ws[a][wip] != null) return ws[a][wip];
+    }
+    return 0;
+  }
+  let uEmb = 0;
+  const embDetail = [];
+  invList.forEach(entry => {
+    const uWip = wipStockOnDay(entry.wip, day);
+    if (uWip <= 0) return;
+    const qEmb = uWip * entry.qty;
+    uEmb += qEmb;
+    embDetail.push({wip: entry.wip, wip_desc: entry.wip_desc, qty_per_unit: entry.qty, u_wip: uWip, u_emb: qEmb});
+  });
+  embDetail.sort((a, b) => b.u_emb - a.u_emb);
+  const uRaw = Math.max(0, u_day - uEmb);
+
+  document.getElementById("dd-title").textContent = spec + "  -  " + day;
+  document.getElementById("dd-sub").textContent = (sInfo.desc||"") + " | " + (sInfo.sup||"-") + " | " + (sInfo.tipo||"-") + " | " + fmtEur(cu) + "/u";
+
+  let h = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
+  h += '<div style="padding:10px;border-radius:6px;background:#e8eef7;border-left:4px solid #0a2730;">';
+  h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Stock fin de ' + day + '</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;">' + fmtInt(u_day) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(v_day) + '</div>';
+  if (uEmb > 0 || invList.length > 0) {
+    h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08);font-size:10px;">';
+    h += '<div><span style="color:#074c5b;">▣ Raw suelto:</span> <strong>' + fmtInt(uRaw) + '</strong> uds</div>';
+    h += '<div><span style="color:#bd6b2e;">▦ Embebido en WIPs:</span> <strong>' + fmtInt(uEmb) + '</strong> uds</div>';
+    h += '</div>';
+  }
+  h += '</div>';
+
+  let totE = 0, totEv = 0;
+  entradas.forEach(e => { totE += e.qty; totEv += e.val; });
+  let totS = 0, totSv = 0;
+  salidas.forEach(s => { totS += s.qty_raw; totSv += s.val_raw; });
+
+  h += '<div style="padding:10px;border-radius:6px;background:#e7f3ec;border-left:4px solid #0d7a5f;">';
+  h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Entradas dia</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;color:#0d7a5f;">+' + fmtInt(totE) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(totEv) + '</div></div>';
+
+  h += '<div style="padding:10px;border-radius:6px;background:#fde4e4;border-left:4px solid #c0492f;">';
+  h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Salidas dia</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;color:#c0492f;">-' + fmtInt(totS) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(totSv) + '</div></div>';
+  h += '</div>';
+
+  // Detalle: WIPs que embeben este raw
+  if (embDetail.length > 0) {
+    h += '<h3 style="margin:14px 0 6px;color:#bd6b2e;">▦ Embebido en WIPs (' + embDetail.length + ' SPECs ensamblados)</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    h += '<thead><tr style="background:#f0f2f5;"><th style="text-align:left;padding:6px;">WIP</th><th style="text-align:left;padding:6px;">Descripción</th><th style="text-align:right;padding:6px;">Stock WIP</th><th style="text-align:right;padding:6px;">qty/u</th><th style="text-align:right;padding:6px;">Uds raw embebidos</th></tr></thead><tbody>';
+    embDetail.forEach(e => {
+      h += '<tr style="border-bottom:1px solid #eef0f3;">';
+      h += '<td style="padding:5px;font-weight:600;color:#0a2730;">' + escapeHtml(e.wip) + '</td>';
+      h += '<td style="padding:5px;color:#3f5a63;">' + escapeHtml(e.wip_desc) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + fmtInt(e.u_wip) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + (e.qty_per_unit === 1 ? '1' : (Math.round(e.qty_per_unit*100)/100)) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;color:#bd6b2e;">' + fmtInt(e.u_emb) + '</td>';
+      h += '</tr>';
+    });
+    h += '<tr style="background:#fef3e2;font-weight:700;border-top:2px solid #bd6b2e;">';
+    h += '<td colspan="4" style="padding:5px;text-align:right;">TOTAL EMBEBIDO</td>';
+    h += '<td style="padding:5px;text-align:right;color:#bd6b2e;">' + fmtInt(uEmb) + '</td>';
+    h += '</tr>';
+    h += '</tbody></table>';
+  }
+
+  if (entradas.length > 0) {
+    h += '<h3 style="margin:14px 0 6px;color:#0d7a5f;">Entradas (' + entradas.length + ')</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    h += '<thead><tr style="background:#f0f2f5;"><th style="text-align:left;padding:6px;">SPEC entrada</th><th style="text-align:left;padding:6px;">Proveedor</th><th style="text-align:left;padding:6px;">Doc</th><th style="text-align:right;padding:6px;">qty/u</th><th style="text-align:right;padding:6px;">Uds</th><th style="text-align:right;padding:6px;">Valor</th></tr></thead><tbody>';
+    entradas.forEach(e => {
+      h += '<tr style="border-bottom:1px solid #eef0f3;">';
+      h += '<td style="padding:5px;font-weight:600;color:#0a2730;">' + escapeHtml(e.from_spec) + '</td>';
+      h += '<td style="padding:5px;">' + escapeHtml(e.proveedor) + '</td>';
+      h += '<td style="padding:5px;color:#3f5a63;font-size:10px;">' + escapeHtml(e.doc) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + (e.qty_per_unit===1 ? '—' : (Math.round(e.qty_per_unit*100)/100)) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;color:#0d7a5f;">+' + fmtInt(e.qty) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;">' + fmtEur(e.val) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  if (salidas.length > 0) {
+    h += '<h3 style="margin:14px 0 6px;color:#c0492f;">Salidas (' + salidas.length + ')</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    h += '<thead><tr style="background:#f0f2f5;"><th style="text-align:left;padding:6px;">Cliente</th><th style="text-align:left;padding:6px;">WIP enviado</th><th style="text-align:left;padding:6px;">Doc</th><th style="text-align:right;padding:6px;">qty WIP</th><th style="text-align:right;padding:6px;">x qty/u</th><th style="text-align:right;padding:6px;">Uds raw</th><th style="text-align:right;padding:6px;">Valor</th></tr></thead><tbody>';
+    salidas.forEach(s => {
+      h += '<tr style="border-bottom:1px solid #eef0f3;">';
+      h += '<td style="padding:5px;font-weight:600;color:#0a8aad;">' + escapeHtml(s.cliente) + '</td>';
+      h += '<td style="padding:5px;font-weight:600;color:#0a2730;">' + escapeHtml(s.wip) + '</td>';
+      h += '<td style="padding:5px;color:#3f5a63;font-size:10px;">' + escapeHtml(s.doc) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + fmtInt(s.qty_wip) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + (s.qty_per_unit===1 ? '—' : (Math.round(s.qty_per_unit*100)/100)) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;color:#c0492f;">-' + fmtInt(s.qty_raw) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;">' + fmtEur(s.val_raw) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+  }
+
+  if (entradas.length === 0 && salidas.length === 0) {
+    h += '<div style="padding:20px;text-align:center;color:#6b8088;font-style:italic;background:#fafbfc;border-radius:6px;">No hay movimientos de este SPEC en ' + day + '.</div>';
+  }
+
+  document.getElementById("dd-content").innerHTML = h;
+  document.getElementById("modalDay").classList.add("show");
+}
+
+function showMesDetail(spec, monthMM, dayLbl) {
+  // Si no se pasa contexto, usar el mes activo (vista diaria) — en mensual se muestra todo
+  const isMensual = getVistaMode() === "mensual";
+  const filterMonth = monthMM || (isMensual ? null : window._activeMonth);
+  const filterDay = dayLbl || (isMensual ? null : window._activeDay);
+  const sInfo = DATA.chart_series[spec] || {};
+  const cu = sInfo.cu || 0;
+  const entradasByDay = DATA.entradas_detail[spec] || {};
+  const salidasByDay = DATA.salidas_detail[spec] || {};
+  function inScope(d) {
+    if (filterDay) return d === filterDay;
+    if (filterMonth) return d.split("-")[1] === filterMonth;
+    return true;
+  }
+  // Flatten entradas y salidas filtrando por mes/día activo
+  const allEntradas = [];
+  Object.keys(entradasByDay).forEach(d => {
+    if (!inScope(d)) return;
+    entradasByDay[d].forEach(e => allEntradas.push({...e, dia: d}));
+  });
+  const allSalidas = [];
+  Object.keys(salidasByDay).forEach(d => {
+    if (!inScope(d)) return;
+    salidasByDay[d].forEach(s => allSalidas.push({...s, dia: d}));
+  });
+  // Ordenar por dia
+  const parseDay = d => { const [dd,mm] = d.split("-"); return parseInt(mm)*100+parseInt(dd); };
+  allEntradas.sort((a,b)=> parseDay(a.dia) - parseDay(b.dia));
+  allSalidas.sort((a,b)=> parseDay(a.dia) - parseDay(b.dia));
+
+  let totE = 0, totEv = 0;
+  allEntradas.forEach(e => { totE += e.qty; totEv += e.val; });
+  let totS = 0, totSv = 0;
+  allSalidas.forEach(s => { totS += s.qty_raw; totSv += s.val_raw; });
+  const net = totE - totS;
+  const netVal = totEv - totSv;
+
+  const scopeTxt = filterDay ? lblPretty(filterDay) : (filterMonth ? (MES_LONG[filterMonth] + " " + DASH_YEAR) : "Periodo completo");
+  document.getElementById("dd-title").textContent = spec + "  -  " + scopeTxt;
+  document.getElementById("dd-sub").textContent = (sInfo.desc||"") + " | " + (sInfo.sup||"-") + " | " + (sInfo.tipo||"-") + " | " + fmtEur(cu) + "/u";
+
+  let h = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
+  h += '<div style="padding:10px;border-radius:6px;background:#e7f3ec;border-left:4px solid #0d7a5f;">';
+  h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Total entradas mes</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;color:#0d7a5f;">+' + fmtInt(totE) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(totEv) + '</div></div>';
+  h += '<div style="padding:10px;border-radius:6px;background:#fde4e4;border-left:4px solid #c0492f;">';
+  h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Total salidas mes</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;color:#c0492f;">-' + fmtInt(totS) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(totSv) + '</div></div>';
+  const netColor = net > 0 ? "#0d7a5f" : (net < 0 ? "#c0492f" : "#6b8088");
+  h += '<div style="padding:10px;border-radius:6px;background:#f8f4ec;border-left:4px solid #d4a843;">';
+  h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Var neta mes</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;color:' + netColor + ';">' + (net>=0?"+":"") + fmtInt(net) + ' uds</div>';
+  h += '<div style="font-size:11px;color:' + netColor + ';">' + (netVal>=0?"+":"") + fmtEur(netVal) + '</div></div>';
+  h += '</div>';
+
+  if (allEntradas.length > 0) {
+    h += '<h3 style="margin:14px 0 6px;color:#0d7a5f;">Entradas (' + allEntradas.length + ')</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    h += '<thead><tr style="background:#f0f2f5;"><th style="text-align:left;padding:6px;">Dia</th><th style="text-align:left;padding:6px;">SPEC entrada</th><th style="text-align:left;padding:6px;">Proveedor</th><th style="text-align:left;padding:6px;">Doc</th><th style="text-align:right;padding:6px;">qty/u</th><th style="text-align:right;padding:6px;">Uds</th><th style="text-align:right;padding:6px;">Valor</th></tr></thead><tbody>';
+    allEntradas.forEach(e => {
+      h += '<tr style="border-bottom:1px solid #eef0f3;">';
+      h += '<td style="padding:5px;color:#3f5a63;font-weight:600;">' + e.dia + '</td>';
+      h += '<td style="padding:5px;font-weight:600;color:#0a2730;">' + escapeHtml(e.from_spec) + '</td>';
+      h += '<td style="padding:5px;">' + escapeHtml(e.proveedor) + '</td>';
+      h += '<td style="padding:5px;color:#3f5a63;font-size:10px;">' + escapeHtml(e.doc) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + (e.qty_per_unit===1 ? '—' : (Math.round(e.qty_per_unit*100)/100)) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;color:#0d7a5f;">+' + fmtInt(e.qty) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;">' + fmtEur(e.val) + '</td>';
+      h += '</tr>';
+    });
+    h += '<tr style="background:#f8f4ec;font-weight:700;border-top:2px solid #d4a843;">';
+      h += '<td style="padding:5px;text-align:right;color:#0d7a5f;">+' + fmtInt(totE) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + fmtEur(totEv) + '</td>';
+    h += '</tr>';
+    h += '</tbody></table>';
+  }
+
+  if (allSalidas.length > 0) {
+    h += '<h3 style="margin:14px 0 6px;color:#c0492f;">Salidas (' + allSalidas.length + ')</h3>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    h += '<thead><tr style="background:#f0f2f5;"><th style="text-align:left;padding:6px;">Dia</th><th style="text-align:left;padding:6px;">Cliente</th><th style="text-align:left;padding:6px;">WIP</th><th style="text-align:left;padding:6px;">Doc</th><th style="text-align:right;padding:6px;">qty WIP</th><th style="text-align:right;padding:6px;">x qty/u</th><th style="text-align:right;padding:6px;">Uds raw</th><th style="text-align:right;padding:6px;">Valor</th></tr></thead><tbody>';
+    allSalidas.forEach(s => {
+      h += '<tr style="border-bottom:1px solid #eef0f3;">';
+      h += '<td style="padding:5px;color:#3f5a63;font-weight:600;">' + s.dia + '</td>';
+      h += '<td style="padding:5px;font-weight:600;color:#0a8aad;">' + escapeHtml(s.cliente) + '</td>';
+      h += '<td style="padding:5px;font-weight:600;color:#0a2730;">' + escapeHtml(s.wip) + '</td>';
+      h += '<td style="padding:5px;color:#3f5a63;font-size:10px;">' + escapeHtml(s.doc) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + fmtInt(s.qty_wip) + '</td>';
+      h += '<td style="padding:5px;text-align:right;">' + (s.qty_per_unit===1 ? '—' : (Math.round(s.qty_per_unit*100)/100)) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;color:#c0492f;">-' + fmtInt(s.qty_raw) + '</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;">' + fmtEur(s.val_raw) + '</td>';
+      h += '</tr>';
+    });
+    h += '<tr style="background:#f8f4ec;font-weight:700;border-top:2px solid #d4a843;">';
+    h += '<td colspan="6" style="padding:5px;text-align:right;">TOTAL</td>';
+    h += '<td style="padding:5px;text-align:right;color:#c0492f;">-' + fmtInt(totS) + '</td>';
+    h += '<td style="padding:5px;text-align:right;">' + fmtEur(totSv) + '</td>';
+    h += '</tr>';
+    h += '</tbody></table>';
+  }
+
+  if (allEntradas.length === 0 && allSalidas.length === 0) {
+    h += '<div style="padding:20px;text-align:center;color:#6b8088;font-style:italic;background:#fafbfc;border-radius:6px;">No hay movimientos de este SPEC en el mes.</div>';
+  }
+
+  document.getElementById("dd-content").innerHTML = h;
+  document.getElementById("modalDay").classList.add("show");
+}
+
+function closeDayModal() {
+  document.getElementById("modalDay").classList.remove("show");
+}
+
+document.querySelectorAll(".tab").forEach(t => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    currentTab = t.dataset.tab;
+    document.getElementById("tab-" + currentTab).classList.add("active");
+    rerender();
+  });
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeChart(); closeDayModal(); }
+});
+
+// Cuadre cards
+// KPIs cards arriba
+function renderKpiCards() {
+  const cuadreEl = document.getElementById("cuadre-row");
+  if (!cuadreEl) return;
+  let h = "";
+  // KPI 1: Stock hoy con variación mes
+  const stockToday = DATA.totales_real[LAST] != null ? DATA.totales_real[LAST] : (DATA.totales_inferred[LAST] || 0);
+  // Variación mensual = stock LAST - stock al inicio del mes activo (último día previo)
+  const monthDaysInData = DAYS.filter(d => d.split("-")[1] === window._activeMonth);
+  let prevMonthLast = null;
+  if (monthDaysInData.length > 0) {
+    const firstIdx = DAYS.indexOf(monthDaysInData[0]);
+    prevMonthLast = firstIdx > 0 ? DAYS[firstIdx - 1] : null;
+  }
+  const stockStartMonth = prevMonthLast ? ((DATA.totales_real[prevMonthLast] != null) ? DATA.totales_real[prevMonthLast] : (DATA.totales_inferred[prevMonthLast] || 0)) : 0;
+  const varMes = stockToday - stockStartMonth;
+  const varColor = varMes >= 0 ? "#0d7a5f" : "#c0492f";
+  const varSign = varMes >= 0 ? "+" : "";
+  h += '<div class="cu-card" style="min-width:220px;"><div class="lbl">Stock ' + lblPretty(LAST) + '</div><div class="val">' + fmtEur(stockToday) + '</div><div class="diff" style="color:' + varColor + ';">' + varSign + fmtEur(varMes) + ' vs ' + lblPretty(prevMonthLast || DAYS[0]) + '</div></div>';
+
+  // KPI 2: Top 3 SPECs bajo mínimo (ordenados por cu desc)
+  const allSpecs = [...(DATA.stock||[]), ...(DATA.stock_low||[])];
+  const belowMin = allSpecs.filter(r => r.minimo && r.minimo > 0 && (r["u_"+LAST]||0) < r.minimo)
+                            .sort((a, b) => (b.cu||0) - (a.cu||0));
+  let belowHtml = belowMin.slice(0, 3).map(r => {
+    const u = r["u_"+LAST] || 0;
+    const sup = (r.sup||"").substring(0, 20);
+    return '<div style="font-size:10px;line-height:1.3;margin-top:1px;"><span style="color:#fff;font-weight:600;">' + escapeHtml(r.spec) + '</span> <span style="opacity:.85;">' + fmtInt(u) + '/' + fmtInt(r.minimo) + '</span><div style="font-size:9px;opacity:.7;">' + escapeHtml(sup) + '</div></div>';
+  }).join("");
+  if (belowMin.length === 0) belowHtml = '<div style="font-size:10px;opacity:.7;">Ninguno</div>';
+  h += '<div class="cu-card" style="min-width:200px;background:rgba(192,73,47,0.25);"><div class="lbl">⚠ Bajo mínimo (Top 3 por c/u)</div><div style="font-size:14px;font-weight:700;margin:2px 0;">' + belowMin.length + ' SPECs</div>' + belowHtml + '</div>';
+
+  // KPI 3: Top 5 SPECs por encima del 200% del mínimo (sobrestockados)
+  const aboveMin = allSpecs.filter(r => r.minimo && r.minimo > 0 && (r["u_"+LAST]||0) >= 2 * r.minimo)
+                            .sort((a, b) => ((b["u_"+LAST]||0) * (b.cu||0)) - ((a["u_"+LAST]||0) * (a.cu||0)));
+  let aboveHtml = aboveMin.slice(0, 5).map(r => {
+    const u = r["u_"+LAST] || 0;
+    const ratio = u / r.minimo;
+    const sup = (r.sup||"").substring(0, 20);
+    return '<div style="font-size:10px;line-height:1.3;margin-top:1px;"><span style="color:#fff;font-weight:600;">' + escapeHtml(r.spec) + '</span> <span style="opacity:.85;">' + fmtInt(u) + ' (' + ratio.toFixed(1) + 'x)</span><div style="font-size:9px;opacity:.7;">' + escapeHtml(sup) + '</div></div>';
+  }).join("");
+  if (aboveMin.length === 0) aboveHtml = '<div style="font-size:10px;opacity:.7;">Ninguno</div>';
+  h += '<div class="cu-card" style="min-width:220px;background:rgba(184,134,47,0.25);"><div class="lbl">📦 Sobrestockados &ge;2× mín (Top 5)</div><div style="font-size:14px;font-weight:700;margin:2px 0;">' + aboveMin.length + ' SPECs</div>' + aboveHtml + '</div>';
+
+  cuadreEl.innerHTML = h;
+}
+renderKpiCards();
+window._renderKpiCards = renderKpiCards;
+
+document.getElementById("badge-entradas").textContent = DATA.entradas.length;
+document.getElementById("badge-salidas").textContent = DATA.salidas.length;
+document.getElementById("badge-cliente").textContent = DATA.salidas_cliente.length;
+document.getElementById("badge-sim").textContent = Object.keys(DATA.simulation || {}).length;
+
+// Inventario chart — dos gráficos: diaria mes activo + mensual fin de mes
+function buildScopeTotals(scopeDays, q) {
+  const matchSpec = (r) => !q ||
+    (r.spec||"").toLowerCase().includes(q) ||
+    (r.desc||"").toLowerCase().includes(q) ||
+    (r.sup||"").toLowerCase().includes(q) ||
+    (r.tipo||"").toLowerCase().includes(q);
+  let real, inf;
+  if (!q) {
+    real = scopeDays.map(d => DATA.totales_real[d] != null ? DATA.totales_real[d] : null);
+    inf = scopeDays.map(d => DATA.totales_inferred[d] || null);
+  } else {
+    const allRows = [...(DATA.stock||[]), ...(DATA.stock_low||[])].filter(matchSpec);
+    real = scopeDays.map(d => null);
+    inf = scopeDays.map(d => {
+      let tot = 0;
+      allRows.forEach(r => { tot += (r["v_"+d] || 0); });
+      return tot;
+    });
+  }
+  return {real, inf};
+}
+
+function renderOneChart(canvasId, scopeDays, valsReal, valsInf, valsProj, q, infoElId, yMin, yMax) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (window["_invChart_"+canvasId]) window["_invChart_"+canvasId].destroy();
+  if (scopeDays.length === 0) return;
+  const datasets = [];
+  if (valsReal && valsReal.some(v => v != null)) datasets.push({label: "Real (SAP)", data: valsReal, borderColor: "#0a2730", backgroundColor: "rgba(10,39,48,0.10)", tension: 0.25, borderWidth: 2.5, pointRadius: 3, spanGaps: false});
+  datasets.push({label: q ? "Filtrado: " + q : "Modelado", data: valsInf, borderColor: "#074c5b", backgroundColor: "rgba(7,76,91,0.05)", tension: 0.25, borderWidth: q ? 2.5 : 1.5, borderDash: q ? [] : [4,3], pointRadius: q ? 3 : 0, spanGaps: false, fill: false});
+  if (valsProj && valsProj.some(v => v != null)) datasets.push({label: "Proyección", data: valsProj, borderColor: "#0d7a5f", backgroundColor: "rgba(13,122,95,0.08)", tension: 0.25, borderWidth: 2.5, borderDash: [6,3], pointRadius: 4, spanGaps: false, fill: false});
+  window["_invChart_"+canvasId] = new Chart(ctx.getContext("2d"), {
+    type: "line",
+    data: { labels: scopeDays.map(lblPretty), datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "top", labels: { font: { size: 10 } } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ": " + fmtEur(ctx.parsed.y) } }
+      },
+      scales: {
+        y: { beginAtZero: false, min: yMin, max: yMax, ticks: { callback: v => fmtEur(v), font: { size: 9 } } },
+        x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 0 } }
+      }
+    }
+  });
+  const refVal = valsInf[valsInf.length - 1];
+  const firstVal = valsInf.find(v => v != null) || (valsReal && valsReal.find(v => v != null)) || 0;
+  const delta = (refVal||0) - firstVal;
+  const sign = delta >= 0 ? "+" : "";
+  const color = delta >= 0 ? "#0d7a5f" : "#c0492f";
+  const infoEl = document.getElementById(infoElId);
+  if (infoEl) infoEl.innerHTML = lblPretty(scopeDays[0]) + ' → ' + lblPretty(scopeDays[scopeDays.length-1]) + ': <strong style="color:'+color+';">' + sign + fmtEur(delta) + '</strong>';
+}
+
+function renderInventarioChart() {
+  const q = (document.getElementById("search") ? document.getElementById("search").value : "").trim().toLowerCase();
+  // ===== DAILY: todos los días hábiles del mes activo + último día hábil del mes ant
+  const m = parseInt(window._activeMonth);
+  const dailyScope = [lastWorkdayLbl(DASH_YEAR, m === 1 ? 12 : m - 1)].concat(weekdaysOfMonth(DASH_YEAR, m));
+  const dailyTotals = buildScopeTotals(dailyScope, q);
+  const monthlyScope = [DAYS[0]];
+  for (let i = 0; i < DAYS.length - 1; i++) {
+    const curM = DAYS[i].split("-")[1];
+    const nxtM = DAYS[i+1].split("-")[1];
+    if (curM !== nxtM && DAYS[i] !== monthlyScope[monthlyScope.length-1]) monthlyScope.push(DAYS[i]);
+  }
+  const last = DAYS[DAYS.length - 1];
+  if (last !== monthlyScope[monthlyScope.length-1]) monthlyScope.push(last);
+  const monthlyTotals = buildScopeTotals(monthlyScope, q);
+  const simMonths = DATA.sim_months || [];
+  const projVals = new Array(monthlyScope.length).fill(null);
+  if (simMonths.length > 0) {
+    projVals[projVals.length - 1] = monthlyTotals.inf[monthlyTotals.inf.length - 1];
+  }
+  simMonths.forEach(mLbl => {
+    monthlyScope.push(mLbl);
+    monthlyTotals.real.push(null);
+    monthlyTotals.inf.push(null);
+    let tot = 0;
+    Object.values(DATA.simulation || {}).forEach(r => {
+      tot += (r.months[mLbl]?.stock_fin || 0) * (r.cu || 0);
+    });
+    const lastInf = monthlyTotals.inf[monthlyTotals.inf.length - 2] || 0;
+    const movSpecsStock = Object.values(DATA.simulation || {}).reduce((s, r) => s + ((r.stock_29may || 0) * (r.cu || 0)), 0);
+    const others = Math.max(0, lastInf - movSpecsStock);
+    projVals.push(tot + others);
+  });
+  const allVals = [...dailyTotals.real, ...dailyTotals.inf, ...monthlyTotals.real, ...monthlyTotals.inf, ...projVals].filter(v => v != null && v > 0);
+  const yMax = allVals.length > 0 ? Math.max(...allVals) * 1.05 : undefined;
+  const yMin = allVals.length > 0 ? Math.min(...allVals) * 0.95 : undefined;
+
+  renderOneChart("inventario-chart-daily", dailyScope, dailyTotals.real, dailyTotals.inf, null, q, "inventario-chart-info-d", yMin, yMax);
+  renderOneChart("inventario-chart-monthly", monthlyScope, monthlyTotals.real, monthlyTotals.inf, projVals, q, "inventario-chart-info-m", yMin, yMax);
+}
+window._renderInventarioChart = renderInventarioChart;
+
+rerender();
+</script>
+</body>
