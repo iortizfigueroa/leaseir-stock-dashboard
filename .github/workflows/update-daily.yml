@@ -1,0 +1,50 @@
+name: Update dashboard daily
+
+on:
+  schedule:
+    # 15:00 UTC = 17:00 Madrid (verano CEST UTC+2). En invierno serían las 16:00 local.
+    # 16:00 UTC = 17:00 Madrid (invierno CET UTC+1). En verano serían las 18:00 local.
+    # Lanzo ambos: la segunda corrida solo añadirá un commit si hay cambios nuevos.
+    - cron: '0 15 * * *'
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # necesario para que el bot pueda commitear
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download ejercicios from Google Drive
+        env:
+          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: python scripts/download_from_drive.py
+
+      - name: Build dashboard
+        run: bash scripts/build.sh
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/ejercicios/ docs/
+          if git diff --staged --quiet; then
+            echo "No hay cambios; skip commit"
+          else
+            git commit -m "Auto-update $(TZ=Europe/Madrid date '+%Y-%m-%d %H:%M')"
+            git push
+          fi
