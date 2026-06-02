@@ -8,32 +8,39 @@ WORK="$ROOT/.build"
 
 echo "[build] Preparando workspace en $WORK"
 rm -rf "$WORK"
-mkdir -p "$WORK"
+mkdir -p "$WORK/SPECS"
 
 # Copiar fuentes
 cp "$ROOT/src/"*.py "$WORK/"
 cp "$ROOT/src/"*.html "$WORK/"
 
-# Copiar maestros (estáticos, en repo)
-cp "$ROOT/data/master/"*.xlsx "$WORK/"
+# Copiar maestros root (Inventario_MASTER, escandallos consolidados, etc.)
+cp "$ROOT/data/master/"*.xlsx "$WORK/" 2>/dev/null || true
 
-# Copiar ejercicios diarios (los más recientes descargados de Drive)
-if compgen -G "$ROOT/data/ejercicios/*.xlsx" > /dev/null; then
-  cp "$ROOT/data/ejercicios/"*.xlsx "$WORK/"
-else
-  echo "[build] WARNING: no hay ejercicios en data/ejercicios/"
-fi
+# Copiar SPECS/ (escandallos individuales, formato por SPEC)
+if compgen -G "$ROOT/data/master/SPECS/*.xlsx" > /dev/null; then
+  cp "$ROOT/data/master/SPECS/"*.xlsx "$WORK/SPECS/"
+    echo "[build] Copiados $(ls $WORK/SPECS/ | wc -l) escandallos a SPECS/"
+    else
+      echo "[build] WARNING: no hay xlsx en data/master/SPECS/ — escandallos no se cargarán"
+      fi
 
-echo "[build] Ejecutando vision_html_full.py"
-cd "$WORK"
-python3 vision_html_full.py
+      # Copiar ejercicios diarios
+      if compgen -G "$ROOT/data/ejercicios/*.xlsx" > /dev/null; then
+        cp "$ROOT/data/ejercicios/"*.xlsx "$WORK/"
+        else
+          echo "[build] WARNING: no hay ejercicios en data/ejercicios/"
+          fi
 
-echo "[build] Moviendo output a docs/"
-mkdir -p "$ROOT/docs"
-cp "$WORK/Vision_Stock_Mes.html" "$ROOT/docs/index.html"
-cp "$WORK/Vision_Stock_Mes.html" "$ROOT/docs/Vision_Stock_Mes.html"
+          echo "[build] Ejecutando vision_html_full.py"
+          cd "$WORK"
+          python3 vision_html_full.py
 
-# Limpieza
-rm -rf "$WORK"
+          echo "[build] Moviendo output a docs/"
+          mkdir -p "$ROOT/docs"
+          cp "$WORK/Vision_Stock_Mes.html" "$ROOT/docs/index.html"
+          cp "$WORK/Vision_Stock_Mes.html" "$ROOT/docs/Vision_Stock_Mes.html"
 
-echo "[build] OK"
+          rm -rf "$WORK"
+          echo "[build] OK"
+          
