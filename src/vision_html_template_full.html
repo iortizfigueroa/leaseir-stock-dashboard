@@ -1303,10 +1303,10 @@ function rerender() {
   if (window._renderKpiCards) window._renderKpiCards();
   // Resumen visual solo en Stock evolutivo
   const resumenEl = document.getElementById("resumen-visual");
-  if (resumenEl) resumenEl.style.display = (currentTab === "stock") ? "" : "none";
+  if (resumenEl) resumenEl.style.display = (currentTab === "stock") ? "flex" : "none";
   // Inventario chart solo en Stock evolutivo + Simulacion
   const invChartEl = document.getElementById("inventario-chart-container");
-  if (invChartEl) invChartEl.style.display = (currentTab === "stock" || currentTab === "simulacion") ? "" : "none";
+  if (invChartEl) invChartEl.style.display = (currentTab === "stock" || currentTab === "simulacion") ? "flex" : "none";
   let n;
   if (currentTab === "stock") n = renderStock(q);
   else if (currentTab === "cliente") n = renderCliente(q);
