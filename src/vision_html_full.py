@@ -1087,6 +1087,16 @@ def main():
     else:
         print("  Inventario_Leaseir_Live.xlsx no encontrado, simulación vacía")
 
+    # raw_real_per_day[day][spec] = u_raw (bolsa A sueltos en hoja inventario)
+    raw_real_per_day = {}
+    for _lbl_r, _d_r in days_real.items():
+        _per_sp = {}
+        for _sp_r, _i_r in _d_r["info"].items():
+            _ur = _i_r.get("u_raw")
+            if _ur is not None:
+                _per_sp[_sp_r] = _ur
+        raw_real_per_day[_lbl_r] = _per_sp
+
     payload = {
         "days": day_labels, "last": last_lbl,
         "mov_days": mov_day_labels,
@@ -1119,6 +1129,7 @@ def main():
         "simulation": sim_data,
         "inv_bom": inv_bom,
         "wip_stocks": wip_stocks_per_day,
+        "raw_real_per_day": raw_real_per_day,
     }
 
     import time as _time
