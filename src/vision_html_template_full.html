@@ -1905,4 +1905,11 @@ function renderInventarioChart() {
   const yMin = allVals.length > 0 ? Math.min(...allVals) * 0.95 : undefined;
 
   renderOneChart("inventario-chart-daily", dailyScope, dailyTotals.real, dailyTotals.inf, null, q, "inventario-chart-info-d", yMin, yMax);
-  renderOneChart("inventario-chart-monthly", monthlyS
+  renderOneChart("inventario-chart-monthly", monthlyScope, monthlyTotals.real, monthlyTotals.inf, projVals, q, "inventario-chart-info-m", yMin, yMax);
+}
+window._renderInventarioChart = renderInventarioChart;
+
+rerender();
+</script>
+</body>
+</html>
