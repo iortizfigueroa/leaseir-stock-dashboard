@@ -445,17 +445,21 @@ function renderResumenVisual(rows) {
   // Detectar scope según vista/mes activo
   const isMensual = getVistaMode() === "mensual";
   const activeM = window._activeMonth;
-  // Día inicial / final de cada vista:
-  // - Mensual: desde DAYS[0] (30-04) hasta LAST (panorámica completa)
-  // - Diaria: desde último día hábil del mes anterior al activo, hasta el último día del mes activo presente en DAYS
+  const activeD = window._activeDay; // ej "02-06" o null
+  // - Si hay día activo: scope = un solo día (startDay = día previo en DAYS, endDay = día activo)
+  // - Mensual: desde DAYS[0] hasta LAST
+  // - Diaria: desde último día hábil del mes anterior al activo, hasta el último día del mes activo
   let startDay, endDay;
-  if (isMensual) { startDay = DAYS[0]; endDay = LAST; }
+  if (activeD && DAYS.indexOf(activeD) >= 0) {
+    endDay = activeD;
+    const idx = DAYS.indexOf(activeD);
+    startDay = idx > 0 ? DAYS[idx - 1] : activeD;
+  } else if (isMensual) { startDay = DAYS[0]; endDay = LAST; }
   else {
     const monthDaysInData = DAYS.filter(d => d.split("-")[1] === activeM);
     if (monthDaysInData.length === 0) { startDay = DAYS[0]; endDay = LAST; }
     else {
       endDay = monthDaysInData[monthDaysInData.length - 1];
-      // start = día previo en DAYS al primer día del mes activo
       const firstIdx = DAYS.indexOf(monthDaysInData[0]);
       startDay = firstIdx > 0 ? DAYS[firstIdx - 1] : monthDaysInData[0];
     }
