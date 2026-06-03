@@ -741,23 +741,62 @@ def main():
     wip_bases_set = set(master.base_spec(k) for k in wip_canons_set)
 
     def load_wip_stocks(daily_file):
-        """Devuelve dict {wip_base: qty} para todos los WIPs en ESCANDALLOS presentes en inventario."""
+        """Devuelve dict {wip_base: qty} para WIPs en ESCANDALLOS presentes en inventario
+        + OFs en vuelo (qty estimada via emitido/cu del WIP)."""
         wb = openpyxl.load_workbook(daily_file, data_only=True)
         wips = {}
-        for sn in wb.sheetnames:
-            if sn.lower().strip() != 'inventario': continue
-            sh = wb[sn]
+        # 1) Inventario directo (stock fisico de WIPs terminados)
+        if "inventario" in wb.sheetnames:
+            sh = wb["inventario"]
+            # Cu por SPEC para estimar qty OFs despues
+            cu_by_canon = {}
             for row in sh.iter_rows(values_only=True, min_row=2):
-                if not row or len(row) < 3 or not row[0]: continue
+                if not row or len(row) < 4 or not row[0]: continue
                 code = str(row[0]).strip()
                 canon = normalize_code(code)
                 base = master.base_spec(canon)
+                try: qty = float(row[2] or 0)
+                except: qty = 0
+                try: val = float(row[3] or 0)
+                except: val = 0
+                if qty > 0 and val > 0:
+                    cu_by_canon[canon] = val / qty
+                    cu_by_canon.setdefault(base, val / qty)
                 if canon in wip_canons_set or base in wip_bases_set:
-                    try: qty = float(row[2] or 0)
-                    except: qty = 0
                     if qty > 0:
                         wips[base] = wips.get(base, 0) + qty
-            break
+            # 2) OFs en vuelo (WIPs en produccion) — estimar qty via emitido/cu
+            if "en vuelo" in wb.sheetnames:
+                sh2 = wb["en vuelo"]
+                for row in sh2.iter_rows(values_only=True, min_row=2):
+                    if not row or len(row) < 8: continue
+                    spec_code = str(row[2] or "").strip()
+                    if not spec_code: continue
+                    canon = normalize_code(spec_code)
+                    base = master.base_spec(canon)
+                    if canon not in wip_canons_set and base not in wip_bases_set:
+                        continue
+                    try: emitido = float(row[5] or 0)
+                    except: emitido = 0
+                    try: recibido = float(row[6] or 0)
+                    except: recibido = 0
+                    try: pendiente = float(row[7] or 0)
+                    except: pendiente = 0
+                    if pendiente <= 0: continue
+                    cu = cu_by_canon.get(canon) or cu_by_canon.get(base) or 0
+                    if cu <= 0:
+                        # estimar via coste teorico del escandallo
+                        try:
+                            exp = master.expand_bom(canon if canon in master.ESCANDALLOS else base)
+                            cu = sum(q * (cu_by_canon.get(r, 0) or cu_by_canon.get(master.base_spec(r), 0)) for r, q in exp.items())
+                        except: cu = 0
+                    if cu > 0:
+                        qty_total = max(1, round(emitido / cu)) if emitido > 0 else 1
+                        qty_recib = round(recibido / cu) if recibido > 0 else 0
+                        qty_pend = max(1, qty_total - qty_recib)
+                    else:
+                        qty_pend = 1
+                    wips[base] = wips.get(base, 0) + qty_pend
         return wips
 
     # WIP stocks: solo cargar el día ancla (último) para minimizar tiempo; resto reutiliza fallback

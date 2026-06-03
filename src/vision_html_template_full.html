@@ -1547,13 +1547,14 @@ function showDayDetail(spec, day) {
   let h = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
   h += '<div style="padding:10px;border-radius:6px;background:#e8eef7;border-left:4px solid #0a2730;">';
   h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Stock fin de ' + day + '</div>';
-  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;">' + fmtInt(uTotShown) + ' uds</div>';
-  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(uTotShown * (sInfo.cu||0)) + '</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;">' + fmtInt(u_day) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(v_day) + '</div>';
   h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08);font-size:10px;">';
   h += '<div><span style="color:#074c5b;">▣ Raw suelto (bolsa A):</span> <strong>' + fmtInt(uRaw) + '</strong> uds</div>';
-  h += '<div><span style="color:#bd6b2e;">▦ Embebido en WIPs (bolsa B):</span> <strong>' + fmtInt(uEmbShown) + '</strong> uds</div>';
-  if (Math.abs(uDiffRollup) >= 1) {
-    h += '<div style="margin-top:4px;color:#8a6a2a;font-style:italic;font-size:10px;">Rollup pone ' + fmtInt(u_day) + ' uds; +' + fmtInt(uDiffRollup) + ' no identificables (posible C/D).</div>';
+  h += '<div><span style="color:#bd6b2e;">▦ Embebido en WIPs (bolsa B):</span> <strong>' + fmtInt(uEmb) + '</strong> uds</div>';
+  const uDiff = u_day - uRaw - uEmb;
+  if (Math.abs(uDiff) >= 1) {
+    h += '<div style="margin-top:4px;color:#8a6a2a;font-style:italic;font-size:10px;">+' + fmtInt(uDiff) + ' uds en bolsa C/D (overhead/sin escandallo).</div>';
   }
   h += '</div>';
   h += '</div>';
