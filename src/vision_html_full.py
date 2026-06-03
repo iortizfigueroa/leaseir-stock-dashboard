@@ -398,51 +398,78 @@ def main():
     total_30abr_real = sum(recon_30abr[k] for k in ("bolsa_A_val", "bolsa_B_val", "bolsa_C_val", "bolsa_D_val"))
     print(f"  30-abr REAL = {total_30abr_real:,.2f} EUR")
 
-    print("[2/5] Cargando ejercicios 27/28/29-may + 01-jun...")
+    # AUTO-DETECT ejercicios disponibles (ordenados cronológicamente).
+    # Cualquier `ejercicio DD-MM-YYYY.xlsx` en PROJECT_DIR se incluye automáticamente.
+    import re as _re
+    ej_files = []
+    for p in PROJECT_DIR.glob("ejercicio *.xlsx"):
+        m = _re.match(r"ejercicio (\d{2})-(\d{2})-(\d{4})\.xlsx", p.name)
+        if m:
+            dd, mm, yyyy = m.groups()
+            lbl = f"{dd}-{mm}"
+            iso = f"{yyyy}-{mm}-{dd}"
+            ej_files.append((iso, lbl, p))
+    ej_files.sort()  # cronológico
+    if not ej_files:
+        sys.exit("ERROR: no se encontró ningún ejercicio*.xlsx en PROJECT_DIR")
+
+    print(f"[2/5] Cargando {len(ej_files)} ejercicios disponibles...")
     days_real = {}
-    for fn, lbl in [("ejercicio 27-05-2026.xlsx", "27-05"),
-                    ("ejercicio 28-05-2026.xlsx", "28-05"),
-                    ("ejercicio 29-05-2026.xlsx", "29-05"),
-                    ("ejercicio 01-06-2026.xlsx", "01-06"),
-                    ("ejercicio 02-06-2026.xlsx", "02-06")]:
-        info, recon = rec.build_totales_por_spec(PROJECT_DIR / fn)
+    for iso, lbl, fn in ej_files:
+        info, recon = rec.build_totales_por_spec(fn)
         days_real[lbl] = {"info": info, "recon": recon,
                           "total": sum(recon[k] for k in ("bolsa_A_val", "bolsa_B_val", "bolsa_C_val", "bolsa_D_val"))}
         print(f"  {lbl} REAL = {days_real[lbl]['total']:,.2f} EUR")
 
-    print("[3/5] Cargando movimientos diarios (4-may a 01-jun)...")
-    mov_by_day = load_movimientos_por_dia(PROJECT_DIR / "ejercicio 29-05-2026.xlsx")
-    # Merge movements from 01-jun file
-    for jun_file in ["ejercicio 01-06-2026.xlsx", "ejercicio 02-06-2026.xlsx"]:
-        mov_extra = load_movimientos_por_dia(PROJECT_DIR / jun_file)
+    # El ANCHOR es el ejercicio más reciente
+    ANCHOR_LBL = ej_files[-1][1]
+    print(f"[3/5] Cargando movimientos diarios (anchor = {ANCHOR_LBL})...")
+
+    # Cargar movimientos de TODOS los ejercicios (el archivo de cada día puede traer todos los movimientos previos)
+    mov_by_day = defaultdict(lambda: {"compras": defaultdict(float), "salidas": defaultdict(float)})
+    for iso, lbl, fn in ej_files:
+        mov_extra = load_movimientos_por_dia(fn)
         for d, m in mov_extra.items():
             if d not in mov_by_day:
                 mov_by_day[d] = {"compras": defaultdict(float), "salidas": defaultdict(float)}
             for sp, q in m["compras"].items():
-                mov_by_day[d]["compras"][sp] += q
+                mov_by_day[d]["compras"][sp] = max(mov_by_day[d]["compras"][sp], q)  # dedupe
             for sp, q in m["salidas"].items():
-                mov_by_day[d]["salidas"][sp] += q
+                mov_by_day[d]["salidas"][sp] = max(mov_by_day[d]["salidas"][sp], q)
     sorted_days = sorted(mov_by_day.keys())
     print(f"  {len(sorted_days)} dias con movimientos: {sorted_days[0]} a {sorted_days[-1]}")
 
-    entradas_full = (cargar_entradas_full(PROJECT_DIR / "ejercicio 29-05-2026.xlsx")
-                   + cargar_entradas_full(PROJECT_DIR / "ejercicio 01-06-2026.xlsx")
-                   + cargar_entradas_full(PROJECT_DIR / "ejercicio 02-06-2026.xlsx"))
-    salidas_full = (cargar_salidas_con_cliente_full(PROJECT_DIR / "ejercicio 29-05-2026.xlsx")
-                  + cargar_salidas_con_cliente_full(PROJECT_DIR / "ejercicio 01-06-2026.xlsx")
-                  + cargar_salidas_con_cliente_full(PROJECT_DIR / "ejercicio 02-06-2026.xlsx"))
+    # Entradas y salidas full (dedupe en cliente: rec.cargar_entradas_full filtra por fecha; sumamos de TODOS)
+    entradas_full = []
+    salidas_full = []
+    for iso, lbl, fn in ej_files:
+        entradas_full += cargar_entradas_full(fn)
+        salidas_full += cargar_salidas_con_cliente_full(fn)
+    # Dedupe por (fecha, spec_emitido, doc, qty) — el mismo movimiento aparece en varios ejercicios
+    seen_e = set(); entradas_full = [e for e in entradas_full if (k := (e["fecha"], e["spec_emitido"], e["doc"], e["qty"])) not in seen_e and not seen_e.add(k)]
+    seen_s = set(); salidas_full = [s for s in salidas_full if (k := (s["fecha"], s["spec_emitido"], s["doc"], s["qty"], s["cliente"])) not in seen_s and not seen_s.add(k)]
 
     print("[4/5] Reconstruyendo stock dia a dia (BACKWARD desde 01-jun)...")
     # Lista de etiquetas en orden: 30-04, luego dias con movimientos
     day_labels = ["30-04"] + [d.strftime("%d-%m") for d in sorted_days]
+    # Asegurar que el día ancla está en day_labels (aunque no tenga movimientos propios)
+    if ANCHOR_LBL not in day_labels:
+        day_labels.append(ANCHOR_LBL)
 
-    # ANCHOR: 01-jun real per SPEC (último día con ejercicio)
-    info_29_anchor = days_real["02-06"]["info"]
+    # ANCHOR: último día con ejercicio real per SPEC
+    info_29_anchor = days_real[ANCHOR_LBL]["info"]
     last_lbl_tmp = day_labels[-1]
     stock_actual = {sp: info_29_anchor[sp]["u_tot"] for sp in info_29_anchor}
 
     # Stocks por dia: {lbl: {spec: u_tot}}
     stocks = {last_lbl_tmp: dict(stock_actual)}
+
+    # Si el anchor no coincide con el último día con movimientos, hacer puente:
+    # stocks del último día con mov = stocks del anchor (sin movimientos entre ellos)
+    if sorted_days:
+        last_mov_lbl = sorted_days[-1].strftime("%d-%m")
+        if last_mov_lbl != ANCHOR_LBL and last_mov_lbl not in stocks:
+            stocks[last_mov_lbl] = dict(stock_actual)
 
     # Backward propagation: stock[dia anterior] = stock[dia] - entradas[dia] + salidas[dia]
     for d in reversed(sorted_days):
@@ -522,7 +549,7 @@ def main():
 
     # Calcular gap por SPEC: inferred (último día) - real (anchor 01-jun)
     last_lbl = day_labels[-1]
-    info_29 = days_real["02-06"]["info"]  # anchor real
+    info_29 = days_real[ANCHOR_LBL]["info"]  # anchor real
     # Para SPEC en stocks pero no en info_29 o viceversa, manejar
     all_specs = set(stocks[last_lbl]) | set(info_29) | set(info_30abr)
     gap_per_spec = {}
@@ -636,7 +663,7 @@ def main():
 
     # Ajuste por dia: real_total - sum(SPECs × cu). Para dias con real cuadra;
     # para intermedios usamos el valor de 01-jun como aproximacion.
-    ajuste_anchor = reales_check["02-06"] - (sum(r.get(f"v_02-06", 0) for r in stock_high) + others_stock_val["02-06"])
+    ajuste_anchor = reales_check[ANCHOR_LBL] - (sum(r.get(f"v_{ANCHOR_LBL}", 0) for r in stock_high) + others_stock_val[ANCHOR_LBL])
     ajuste_per_day = {}
     for lbl in day_labels:
         val_specs = sum(r.get(f"v_{lbl}", 0) for r in stock_high) + others_stock_val[lbl]
@@ -695,7 +722,8 @@ def main():
 
     # WIP stocks: solo cargar el día ancla (último) para minimizar tiempo; resto reutiliza fallback
     wip_stocks_per_day = {}
-    wip_stocks_per_day["02-06"] = load_wip_stocks(PROJECT_DIR / "ejercicio 02-06-2026.xlsx")
+    # Cargar wip_stocks del día ancla (el más reciente)
+    wip_stocks_per_day[ANCHOR_LBL] = load_wip_stocks(ej_files[-1][2])
 
     # Inverse BOM: raw_canon → [{wip: spec_canon, qty: qty_per_unit, wip_desc: ...}]
     # Permite calcular embed dinámico en JS: para cualquier día, embed_raw = sum(u_wip × qty)
@@ -825,6 +853,9 @@ def main():
     salidas_rows.sort(key=lambda r: -r["val"])
     salidas_rows_low.sort(key=lambda r: -r["val"])
 
+    # info_29_local apunta al anchor real (usado por todas las cliente tables)
+    info_29_local = days_real[ANCHOR_LBL]["info"]
+
     # Salidas por cliente (WIP-level, agg) — incluye qty/val por día
     agg_cli = defaultdict(lambda: {"qty": 0, "val": 0, "coste_unit": 0, "desc": "", "lotes": set(),
                                     "by_day_q": defaultdict(float), "by_day_v": defaultdict(float)})
@@ -840,8 +871,12 @@ def main():
         agg_cli[k]["by_day_v"][d_lbl] += s["valor"]
     salidas_cliente_table = []
     for (cli, sp), v in agg_cli.items():
+        # Buscar proveedor del SPEC vía info_29_local (la raw del WIP no aplica → buscamos por base)
+        canon = normalize_code(sp)
+        info_sp = info_29_local.get(canon) or info_29_local.get(master.base_spec(canon)) or {}
+        sup = info_sp.get("supplier", "") or ""
         row = {
-            "cliente": cli, "spec": sp, "desc": v["desc"],
+            "cliente": cli, "spec": sp, "desc": v["desc"], "sup": sup,
             "qty": v["qty"], "coste_unit": v["coste_unit"], "val": v["val"],
             "lotes": ", ".join(sorted(v["lotes"]))[:60],
         }
@@ -854,7 +889,6 @@ def main():
     # Salidas por cliente vista RAW: descomponer WIPs a raws (con qty/val por día)
     agg_cli_raw = defaultdict(lambda: {"qty": 0, "val": 0, "via": defaultdict(float),
                                         "by_day_q": defaultdict(float), "by_day_v": defaultdict(float)})
-    info_29_local = days_real["02-06"]["info"]
     for s in salidas_full:
         canon = s["spec_canon"]
         qty_wip = s["qty"]
@@ -1015,10 +1049,8 @@ def main():
     print(f"  SPECs > {COST_THRESHOLD:.0f} EUR/u: {len(stock_high)}, Others: {len(stock_low)}")
     print(f"  Entradas: {len(entradas_rows)} + {len(entradas_rows_low)} Others")
     print(f"  Salidas: {len(salidas_rows)} + {len(salidas_rows_low)} Others")
-    print(f"  Entradas: {len(entradas_rows)} + {len(entradas_rows_low)} Others")
-    print(f"  Salidas: {len(salidas_rows)} + {len(salidas_rows_low)} Others")
     print(f"\n  Ajuste por dia (real - sum SPECs):")
-    for lbl in ["30-04", "27-05", "28-05", "29-05", "01-06", "02-06"]:
+    for _iso, lbl, _fn in ej_files:
         if lbl in day_labels:
             print(f"    {lbl}: {ajuste_per_day[lbl]:+,.0f} EUR  (total {totales[lbl]:,.0f} vs real {reales.get(lbl, 0):,.0f})")
 

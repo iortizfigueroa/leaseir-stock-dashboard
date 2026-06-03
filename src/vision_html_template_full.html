@@ -218,14 +218,14 @@ const MES_LONG = {"01":"Enero","02":"Febrero","03":"Marzo","04":"Abril","05":"Ma
 const DASH_YEAR = 2026;
 function lblPretty(d) { const p = String(d).split("-"); return p.length===2 ? (p[0] + "-" + (MES_ABBR[p[1]] || p[1])) : d; }
 
-// Mes activo (MM) — arrancar en el último mes con >= 5 días de movimientos (evita arrancar en un mes vacío)
+// Mes activo (MM) — arrancar en el mes en curso (real, hoy). Si el mes en curso
+// no tiene aún ningún día con datos, caer al último mes presente en los datos.
 function pickDefaultMonth() {
-  const cnt = {};
-  (DATA.mov_days || []).forEach(d => { const m = d.split("-")[1]; cnt[m] = (cnt[m]||0)+1; });
-  const sorted = Object.keys(cnt).sort();
-  for (let i = sorted.length-1; i >= 0; i--) {
-    if (cnt[sorted[i]] >= 5) return sorted[i];
-  }
+  const todayMM = pad2(new Date().getMonth() + 1);
+  const daysInData = new Set((DAYS || []).map(d => d.split("-")[1]));
+  if (daysInData.has(todayMM)) return todayMM;
+  // Fallback: último mes presente en los datos
+  const sorted = Array.from(daysInData).sort();
   return sorted[sorted.length-1] || LAST.split("-")[1];
 }
 window._activeMonth = pickDefaultMonth();
@@ -1007,6 +1007,7 @@ function renderCliente(q) {
     cols = [
       {key: "cliente", label: "Cliente"}, {key: "spec", label: "SPEC emitido"},
       {key: "desc", label: "Descripcion"},
+      {key: "sup", label: "Proveedor"},
       {key: "coste_unit", label: "Coste/u", num: true},
       {key: "qty", label: "Uds", num: true, dayCls: "day last"},
       {key: "val", label: "Valor", num: true, dayCls: "day last"},
@@ -1022,7 +1023,7 @@ function renderCliente(q) {
     h += '<td class="left cliente">' + escapeHtml(r.cliente) + '</td>';
     h += specCell(r.spec, true);
     h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc||"").substring(0,80)) + '</td>';
-    if (isRaw) h += '<td class="left sup" style="font-size:10px;color:#3f5a63;">' + escapeHtml(r.sup||"") + '</td>';
+    h += '<td class="left sup" style="font-size:10px;color:#3f5a63;">' + escapeHtml(r.sup||"") + '</td>';
     h += '<td class="cu">' + fmtEur(r.coste_unit) + '</td>';
     h += '<td class="day-cell last" style="color:#c0492f;font-weight:600;">' + fmtInt(r.qty_m) + '</td>';
     h += '<td class="day-cell last" style="color:#c0492f;font-weight:600;">' + fmtEur(r.val_m) + '</td>';
@@ -1031,7 +1032,7 @@ function renderCliente(q) {
   });
   const periodTxt = window._activeDay ? lblPretty(window._activeDay) : (MES_LONG[window._activeMonth] + " " + DASH_YEAR);
   h += "</tbody><tfoot><tr>";
-  h += '<td colspan="' + (isRaw ? 5 : 4) + '" class="left">TOTAL ' + (isRaw ? "SALIDAS A CLIENTES POR RAW" : "SALIDAS A CLIENTES (WIP)") + ' ' + periodTxt + '</td>';
+  h += '<td colspan="5" class="left">TOTAL ' + (isRaw ? "SALIDAS A CLIENTES POR RAW" : "SALIDAS A CLIENTES (WIP)") + ' ' + periodTxt + '</td>';
   h += '<td class="day-cell last" style="color:#c0492f;">' + fmtInt(totU) + '</td>';
   h += '<td class="day-cell last" style="color:#c0492f;">' + fmtEur(totV) + '</td>';
   h += '<td>&mdash;</td></tr></tfoot>';
@@ -1303,7 +1304,7 @@ function rerender() {
   if (window._renderKpiCards) window._renderKpiCards();
   // Resumen visual solo en Stock evolutivo
   const resumenEl = document.getElementById("resumen-visual");
-  if (resumenEl) resumenEl.style.display = (currentTab === "stock") ? "flex" : "none";
+  if (resumenEl) resumenEl.style.display = (currentTab === "stock") ? "" : "none";
   // Inventario chart solo en Stock evolutivo + Simulacion
   const invChartEl = document.getElementById("inventario-chart-container");
   if (invChartEl) invChartEl.style.display = (currentTab === "stock" || currentTab === "simulacion") ? "flex" : "none";
@@ -1911,3 +1912,4 @@ window._renderInventarioChart = renderInventarioChart;
 rerender();
 </script>
 </body>
+</html>
