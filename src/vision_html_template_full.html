@@ -1577,8 +1577,9 @@ function showDayDetail(spec, day) {
   h += '</div>';
 
   // Detalle: WIPs que embeben este raw
-  if (embDetail.length > 0) {
-    h += '<h3 style="margin:14px 0 6px;color:#bd6b2e;">▦ Embebido en WIPs (' + embDetail.length + ' SPECs ensamblados)</h3>';
+  if (embDetail.length > 0 || uEmbShown > 0) {
+    const hdrCount = embDetail.length > 0 ? (embDetail.length + ' SPECs ensamblados') : 'sin desglose disponible';
+    h += '<h3 style="margin:14px 0 6px;color:#bd6b2e;">▦ Embebido en WIPs (' + hdrCount + ')</h3>';
     h += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
     h += '<thead><tr style="background:#f0f2f5;"><th style="text-align:left;padding:6px;">WIP</th><th style="text-align:left;padding:6px;">Descripción</th><th style="text-align:right;padding:6px;">Stock WIP</th><th style="text-align:right;padding:6px;">qty/u</th><th style="text-align:right;padding:6px;">Uds raw embebidos</th></tr></thead><tbody>';
     embDetail.forEach(e => {
@@ -1590,9 +1591,18 @@ function showDayDetail(spec, day) {
       h += '<td style="padding:5px;text-align:right;font-weight:600;color:#bd6b2e;">' + fmtInt(e.u_emb) + '</td>';
       h += '</tr>';
     });
+    // Si el embebido total (uEmbShown desde u_tot − raw_real) es mayor que la suma visible (uEmb),
+    // mostrar fila "Otros (sin escandallo cargado)" para cuadrar el desglose
+    const gapEmb = uEmbShown - uEmb;
+    if (Math.abs(gapEmb) >= 1) {
+      h += '<tr style="background:#fff7e8;color:#8a6a2a;font-style:italic;border-top:1px dashed #d4a857;">';
+      h += '<td colspan="4" style="padding:5px;text-align:right;">Otros WIPs (sin escandallo cargado o sin stock visible)</td>';
+      h += '<td style="padding:5px;text-align:right;font-weight:600;">+' + fmtInt(gapEmb) + '</td>';
+      h += '</tr>';
+    }
     h += '<tr style="background:#fef3e2;font-weight:700;border-top:2px solid #bd6b2e;">';
-    h += '<td colspan="4" style="padding:5px;text-align:right;">TOTAL EMBEBIDO</td>';
-    h += '<td style="padding:5px;text-align:right;color:#bd6b2e;">' + fmtInt(uEmb) + '</td>';
+    h += '<td colspan="4" style="padding:5px;text-align:right;">TOTAL EMBEBIDO (bolsa B)</td>';
+    h += '<td style="padding:5px;text-align:right;color:#bd6b2e;">' + fmtInt(uEmbShown) + '</td>';
     h += '</tr>';
     h += '</tbody></table>';
   }
