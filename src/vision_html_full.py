@@ -762,8 +762,13 @@ def main():
 
     # WIP stocks: solo cargar el día ancla (último) para minimizar tiempo; resto reutiliza fallback
     wip_stocks_per_day = {}
-    # Cargar wip_stocks del día ancla (el más reciente)
-    wip_stocks_per_day[ANCHOR_LBL] = load_wip_stocks(ej_files[-1][2])
+    # Cargar wip_stocks de TODOS los ejercicios disponibles para que el breakdown raw/embebido
+    # del drill-down funcione correctamente cualquier día seleccionado.
+    for _iso_w, _lbl_w, _fn_w in ej_files:
+        try:
+            wip_stocks_per_day[_lbl_w] = load_wip_stocks(_fn_w)
+        except Exception as _e:
+            print(f"  WARN wip_stocks {_lbl_w}: {_e}")
 
     # Inverse BOM: raw_canon → [{wip: spec_canon, qty: qty_per_unit, wip_desc: ...}]
     # Permite calcular embed dinámico en JS: para cualquier día, embed_raw = sum(u_wip × qty)
@@ -1112,6 +1117,8 @@ def main():
         "cost_threshold": COST_THRESHOLD,
         "gap_30abr_val": gap_30abr_val,
         "simulation": sim_data,
+        "inv_bom": inv_bom,
+        "wip_stocks": wip_stocks_per_day,
     }
 
     import time as _time
