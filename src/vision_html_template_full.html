@@ -138,7 +138,7 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
 </header>
 
 <div class="controls">
-<input type="text" id="search" placeholder="Buscar SPEC, descripcion, proveedor, cliente..." oninput="rerender()">
+<input type="text" id="search" placeholder="Buscar SPEC, descripcion, proveedor, cliente..." oninput="rerender()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="search_no_history" inputmode="search">
 <span class="count" id="rowcount"></span>
 <div class="group" id="grp-month" style="background:#e8f5f8;border:1px solid #cfe5ea;">
   <button onclick="changeMonth(-1)" style="border:none;background:#0a2730;color:white;border-radius:3px;cursor:pointer;padding:3px 8px;font-size:13px;font-weight:700;">◀</button>
@@ -1905,11 +1905,4 @@ function renderInventarioChart() {
   const yMin = allVals.length > 0 ? Math.min(...allVals) * 0.95 : undefined;
 
   renderOneChart("inventario-chart-daily", dailyScope, dailyTotals.real, dailyTotals.inf, null, q, "inventario-chart-info-d", yMin, yMax);
-  renderOneChart("inventario-chart-monthly", monthlyScope, monthlyTotals.real, monthlyTotals.inf, projVals, q, "inventario-chart-info-m", yMin, yMax);
-}
-window._renderInventarioChart = renderInventarioChart;
-
-rerender();
-</script>
-</body>
-</html>
+  renderOneChart("inventario-chart-monthly", monthlyS
