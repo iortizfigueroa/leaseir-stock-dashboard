@@ -1531,18 +1531,15 @@ function showDayDetail(spec, day) {
     embDetail.push({wip: entry.wip, wip_desc: entry.wip_desc, qty_per_unit: entry.qty, u_wip: uWip, u_emb: qEmb});
   });
   embDetail.sort((a, b) => b.u_emb - a.u_emb);
-  // Si tenemos raw_real (hoja inventario SAP) lo usamos como verdad y emb = u_day - raw_real
+  // Verdad SAP: raw suelto de la hoja inventario + embebido identificable (uEmb desde escandallos).
+  // No inflamos con el rollup: si el rollup pone más, lo señalamos como nota informativa.
   const rawRealMap = (DATA.raw_real_per_day || {})[day] || {};
   const uRawReal = rawRealMap[spec];
-  let uRaw, uEmbShown;
-  if (uRawReal != null) {
-    uRaw = uRawReal;
-    uEmbShown = Math.max(0, u_day - uRawReal);
-  } else {
-    uRaw = Math.max(0, u_day - uEmb);
-    uEmbShown = uEmb;
-  }
-  // Usamos uEmbShown en el panel; embDetail muestra el desglose por WIP igualmente.
+  const uRaw = (uRawReal != null) ? uRawReal : Math.max(0, u_day - uEmb);
+  const uEmbShown = uEmb; // solo lo que cuadra con escandallos cargados
+  const uTotShown = uRaw + uEmbShown;
+  const uDiffRollup = u_day - uTotShown; // posible bolsa C/D o WIPs sin escandallo
+
 
   document.getElementById("dd-title").textContent = spec + "  -  " + day;
   document.getElementById("dd-sub").textContent = (sInfo.desc||"") + " | " + (sInfo.sup||"-") + " | " + (sInfo.tipo||"-") + " | " + fmtEur(cu) + "/u";
@@ -1550,14 +1547,15 @@ function showDayDetail(spec, day) {
   let h = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
   h += '<div style="padding:10px;border-radius:6px;background:#e8eef7;border-left:4px solid #0a2730;">';
   h += '<div style="font-size:10px;text-transform:uppercase;opacity:.7;">Stock fin de ' + day + '</div>';
-  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;">' + fmtInt(u_day) + ' uds</div>';
-  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(v_day) + '</div>';
-  if (uEmb > 0 || invList.length > 0) {
-    h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08);font-size:10px;">';
-    h += '<div><span style="color:#074c5b;">▣ Raw suelto (bolsa A):</span> <strong>' + fmtInt(uRaw) + '</strong> uds</div>';
-    h += '<div><span style="color:#bd6b2e;">▦ Embebido en WIPs (bolsa B):</span> <strong>' + fmtInt(uEmbShown) + '</strong> uds</div>';
-    h += '</div>';
+  h += '<div style="font-size:16px;font-weight:700;margin-top:3px;">' + fmtInt(uTotShown) + ' uds</div>';
+  h += '<div style="font-size:11px;color:#3f5a63;">' + fmtEur(uTotShown * (sInfo.cu||0)) + '</div>';
+  h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08);font-size:10px;">';
+  h += '<div><span style="color:#074c5b;">▣ Raw suelto (bolsa A):</span> <strong>' + fmtInt(uRaw) + '</strong> uds</div>';
+  h += '<div><span style="color:#bd6b2e;">▦ Embebido en WIPs (bolsa B):</span> <strong>' + fmtInt(uEmbShown) + '</strong> uds</div>';
+  if (Math.abs(uDiffRollup) >= 1) {
+    h += '<div style="margin-top:4px;color:#8a6a2a;font-style:italic;font-size:10px;">Rollup pone ' + fmtInt(u_day) + ' uds; +' + fmtInt(uDiffRollup) + ' no identificables (posible C/D).</div>';
   }
+  h += '</div>';
   h += '</div>';
 
   let totE = 0, totEv = 0;
@@ -1591,18 +1589,9 @@ function showDayDetail(spec, day) {
       h += '<td style="padding:5px;text-align:right;font-weight:600;color:#bd6b2e;">' + fmtInt(e.u_emb) + '</td>';
       h += '</tr>';
     });
-    // Si el embebido total (uEmbShown desde u_tot − raw_real) es mayor que la suma visible (uEmb),
-    // mostrar fila "Otros (sin escandallo cargado)" para cuadrar el desglose
-    const gapEmb = uEmbShown - uEmb;
-    if (Math.abs(gapEmb) >= 1) {
-      h += '<tr style="background:#fff7e8;color:#8a6a2a;font-style:italic;border-top:1px dashed #d4a857;">';
-      h += '<td colspan="4" style="padding:5px;text-align:right;">Otros WIPs (sin escandallo cargado o sin stock visible)</td>';
-      h += '<td style="padding:5px;text-align:right;font-weight:600;">+' + fmtInt(gapEmb) + '</td>';
-      h += '</tr>';
-    }
     h += '<tr style="background:#fef3e2;font-weight:700;border-top:2px solid #bd6b2e;">';
     h += '<td colspan="4" style="padding:5px;text-align:right;">TOTAL EMBEBIDO (bolsa B)</td>';
-    h += '<td style="padding:5px;text-align:right;color:#bd6b2e;">' + fmtInt(uEmbShown) + '</td>';
+    h += '<td style="padding:5px;text-align:right;color:#bd6b2e;">' + fmtInt(uEmb) + '</td>';
     h += '</tr>';
     h += '</tbody></table>';
   }
