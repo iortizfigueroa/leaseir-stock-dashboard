@@ -425,6 +425,46 @@ def main():
     ANCHOR_LBL = ej_files[-1][1]
     print(f"[3/5] Cargando movimientos diarios (anchor = {ANCHOR_LBL})...")
 
+    # === FIX PROVEEDORES GLOBAL ===
+    # La hoja "proveedores" del ejercicio contiene el supplier de TODOS los SPECs.
+    # El loader auxiliar busca "proveedores-SPEC" (nombre antiguo) y no encuentra nada.
+    # Cargamos aqui la hoja real y sobrescribimos supplier en todos los info de days_real.
+    _global_suppliers = {}
+    try:
+        _wb_g = openpyxl.load_workbook(ej_files[-1][2], data_only=True, read_only=True)
+        _sh_g_name = next((n for n in _wb_g.sheetnames if n.lower().startswith("proveedor")), None)
+        if _sh_g_name:
+            _sh_g = _wb_g[_sh_g_name]
+            _agg = defaultdict(set)
+            for _r in _sh_g.iter_rows(values_only=True, min_row=2):
+                if not _r or not _r[0]:
+                    continue
+                _code = str(_r[0]).strip()
+                _sup = str((_r[3] if len(_r) > 3 else "") or "").strip()
+                if not _sup:
+                    continue
+                _agg[normalize_code(_code)].add(_sup)
+                _agg[_code].add(_sup)
+            for _k, _names in _agg.items():
+                _global_suppliers[_k] = next(iter(_names)) if len(_names) == 1 else " / ".join(sorted(_names))
+        _wb_g.close()
+        print(f"  Proveedores cargados de hoja '{_sh_g_name}': {len(_global_suppliers)} entries")
+    except Exception as _e:
+        print(f"  WARN suppliers: {_e}")
+
+    # Sobrescribir supplier en info de cada dia (afecta a Stock, Entradas, Salidas, Cliente)
+    for _lbl_x, _d_x in days_real.items():
+        for _sp_x, _i_x in _d_x["info"].items():
+            _cur_x = (_i_x.get("supplier", "") or "").strip()
+            if _cur_x and _cur_x not in ("(SIN PROVEEDOR)", "(contable)"):
+                continue
+            _new_x = (_global_suppliers.get(_sp_x)
+                      or _global_suppliers.get(normalize_code(_sp_x))
+                      or _global_suppliers.get(master.base_spec(normalize_code(_sp_x))))
+            if _new_x:
+                _i_x["supplier"] = _new_x
+
+
     # Cargar movimientos de TODOS los ejercicios (el archivo de cada día puede traer todos los movimientos previos)
     mov_by_day = defaultdict(lambda: {"compras": defaultdict(float), "salidas": defaultdict(float)})
     for iso, lbl, fn in ej_files:
