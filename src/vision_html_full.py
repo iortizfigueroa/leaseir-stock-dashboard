@@ -855,6 +855,60 @@ def main():
 
     # info_29_local apunta al anchor real (usado por todas las cliente tables)
     info_29_local = days_real[ANCHOR_LBL]["info"]
+    # Fallback global de proveedores: hoja "proveedores" del ejercicio anchor.
+    # Cubre TODOS los SPECs (incluidos WIPs vendidos) que no estan en stock.
+    suppliers_anchor = {}
+    try:
+        _wb_sup = openpyxl.load_workbook(ej_files[-1][2], data_only=True, read_only=True)
+        _sh_sup_name = next((n for n in _wb_sup.sheetnames if n.lower().startswith("proveedor")), None)
+        if _sh_sup_name:
+            _sh_sup = _wb_sup[_sh_sup_name]
+            _by_code = defaultdict(set)
+            for _r in _sh_sup.iter_rows(values_only=True, min_row=2):
+                if not _r or not _r[0]:
+                    continue
+                _code = str(_r[0]).strip()
+                _sup = str((_r[3] if len(_r) > 3 else "") or "").strip()
+                if not _sup:
+                    continue
+                _by_code[normalize_code(_code)].add(_sup)
+                _by_code[_code].add(_sup)
+            for _k, _names in _by_code.items():
+                suppliers_anchor[_k] = next(iter(_names)) if len(_names) == 1 else " / ".join(sorted(_names))
+        _wb_sup.close()
+    except Exception as _e:
+        print(f"  WARN: no se pudo cargar hoja proveedores del anchor: {_e}")
+
+    def _lookup_supplier(spec_emit):
+        canon = normalize_code(spec_emit)
+        base = master.base_spec(canon)
+        # 1) rollup del dia (raws en stock)
+        info_sp = info_29_local.get(canon) or info_29_local.get(base) or {}
+        s = info_sp.get("supplier", "") or ""
+        if s and s != "(SIN PROVEEDOR)":
+            return s
+        # 2) hoja "proveedores" del ejercicio (lookup directo)
+        s2 = suppliers_anchor.get(canon) or suppliers_anchor.get(base)
+        if s2:
+            return s2
+        # 3) si es WIP, agregamos el proveedor mas usado entre sus raws (ponderado por qty)
+        if canon in master.ESCANDALLOS:
+            try:
+                exp = master.expand_bom(canon)
+            except Exception:
+                exp = {}
+            from collections import Counter as _Cnt
+            cnt = _Cnt()
+            for _raw, _q in exp.items():
+                _info_r = info_29_local.get(_raw) or info_29_local.get(master.base_spec(_raw)) or {}
+                _sup_r = _info_r.get("supplier", "") or ""
+                if not _sup_r or _sup_r == "(SIN PROVEEDOR)":
+                    _sup_r = suppliers_anchor.get(_raw) or suppliers_anchor.get(master.base_spec(_raw)) or ""
+                if _sup_r and _sup_r != "(SIN PROVEEDOR)":
+                    cnt[_sup_r] += _q
+            if cnt:
+                return cnt.most_common(1)[0][0]
+        return s or ""
 
     # Salidas por cliente (WIP-level, agg) — incluye qty/val por día
     agg_cli = defaultdict(lambda: {"qty": 0, "val": 0, "coste_unit": 0, "desc": "", "lotes": set(),
@@ -871,10 +925,7 @@ def main():
         agg_cli[k]["by_day_v"][d_lbl] += s["valor"]
     salidas_cliente_table = []
     for (cli, sp), v in agg_cli.items():
-        # Buscar proveedor del SPEC vía info_29_local (la raw del WIP no aplica → buscamos por base)
-        canon = normalize_code(sp)
-        info_sp = info_29_local.get(canon) or info_29_local.get(master.base_spec(canon)) or {}
-        sup = info_sp.get("supplier", "") or ""
+        sup = _lookup_supplier(sp)
         row = {
             "cliente": cli, "spec": sp, "desc": v["desc"], "sup": sup,
             "qty": v["qty"], "coste_unit": v["coste_unit"], "val": v["val"],
@@ -1021,10 +1072,8 @@ def main():
         "cost_threshold": COST_THRESHOLD,
         "gap_30abr_val": gap_30abr_val,
         "simulation": sim_data,
-        "sim_months": MESES_SIM,
-        "inv_bom": {k: v for k, v in inv_bom.items()},
-        "wip_stocks": wip_stocks_per_day,
     }
+
     import time as _time
     _t = _time.time()
     data_json = json.dumps(payload, ensure_ascii=False, default=float)
@@ -1045,14 +1094,8 @@ def main():
     shutil.copyfile(tmp_path, OUTPUT_HTML)
     print(f"  copy to OneDrive: {_time.time()-_t:.1f}s")
 
-    print(f"\nGUARDADO: {OUTPUT_HTML.name}")
-    print(f"  SPECs > {COST_THRESHOLD:.0f} EUR/u: {len(stock_high)}, Others: {len(stock_low)}")
     print(f"  Entradas: {len(entradas_rows)} + {len(entradas_rows_low)} Others")
     print(f"  Salidas: {len(salidas_rows)} + {len(salidas_rows_low)} Others")
-    print(f"\n  Ajuste por dia (real - sum SPECs):")
-    for _iso, lbl, _fn in ej_files:
-        if lbl in day_labels:
-            print(f"    {lbl}: {ajuste_per_day[lbl]:+,.0f} EUR  (total {totales[lbl]:,.0f} vs real {reales.get(lbl, 0):,.0f})")
 
 
 if __name__ == "__main__":
