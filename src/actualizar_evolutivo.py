@@ -97,6 +97,7 @@ def process_day(daily_file: Path):
     for row in inv:
         row["cat"] = master.classify(row, suppliers)
     unit_cost = master.build_unit_costs(inv)
+    master.reinfer_of_quantities(inv, unit_cost)
     recon = master.reconcile(inv, unit_cost)
     rollup = master.build_rollup(inv, recon, unit_cost, suppliers, {})
 

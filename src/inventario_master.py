@@ -567,9 +567,18 @@ def classify(row: dict, supplier_map: dict[str, str]) -> str:
 # COSTES UNITARIOS
 # ============================================================
 
+# Memoria de "ultimo coste conocido" entre dias procesados en orden cronologico.
+# Evita que el coste de un componente "desaparezca" (y su material se valore a 0,
+# inflando la Bolsa C) el dia que su stock raw llega a 0.
+COST_MEMORY: dict[str, float] = {}
+
+
 def build_unit_costs(inventory: list[dict]) -> dict[str, float]:
     """Para cada SPEC canonico, calcula coste unitario medio ponderado a partir
-    de las filas RAW de ese canonico (excluyendo /DF y /OER)."""
+    de las filas RAW de ese canonico (excluyendo /DF y /OER).
+
+    Fallback en cascada: coste de hoy -> por base -> ultimo coste conocido
+    (COST_MEMORY, se actualiza en cada llamada) -> PROXY_COSTS."""
     qty_by_canon: dict[str, float] = defaultdict(float)
     val_by_canon: dict[str, float] = defaultdict(float)
     for row in inventory:
@@ -600,10 +609,54 @@ def build_unit_costs(inventory: list[dict]) -> dict[str, float]:
         if q > 0 and b not in unit_cost:
             unit_cost[b] = val_by_base[b] / q
 
-    # Proxies
+    # Memoria: si hoy no hay stock del SPEC, usar su ultimo coste conocido.
+    # (Snapshot de los costes reales de hoy ANTES de mezclar, para que la
+    # memoria solo acumule costes observados, nunca proxies ni ecos.)
+    todays_real = {c: v for c, v in unit_cost.items() if v > 0}
+    for c, cost in COST_MEMORY.items():
+        unit_cost.setdefault(c, cost)
+    COST_MEMORY.update(todays_real)
+
+    # Proxies (solo si ni hoy ni la memoria tienen coste)
     for c, cost in PROXY_COSTS.items():
         unit_cost.setdefault(canonical(c), cost)
     return unit_cost
+
+
+def reinfer_of_quantities(inventory: list[dict], unit_cost: dict[str, float]) -> int:
+    """Re-infiere la cantidad de los pseudo-items de OFs en vuelo usando el
+    coste teorico del BOM: qty = round(valor_pendiente / coste_material_BOM).
+
+    La inferencia original (emitido / coste_unitario_del_WIP_en_inventario) da
+    cantidades absurdas cuando el WIP tiene un coste residual en inventario
+    (ej. OF con 13.520 EUR pendientes inferida como 82 handpieces que llevan
+    un diodo de 3.100 EUR cada uno). Con la qty corregida, el material embebido
+    (Bolsa B) deja de inflarse y la Bolsa C deja de compensar en negativo.
+
+    Muta inventory in place. Devuelve el numero de OFs corregidas."""
+    n = 0
+    for row in inventory:
+        if row.get("source") != "of":
+            continue
+        canon = row["canon"]
+        if canon not in ESCANDALLOS:
+            continue
+        try:
+            exp = expand_bom(canon)
+        except Exception:
+            continue
+        coste_teorico = sum(
+            q * (unit_cost.get(r) or unit_cost.get(base_spec(r)) or 0.0)
+            for r, q in exp.items()
+        )
+        if coste_teorico <= 0:
+            continue
+        qty_new = max(1.0, float(round(row["val_inv"] / coste_teorico)))
+        if qty_new != row["qty"]:
+            row["qty"] = qty_new
+            row["unit_cost_inv"] = row["val_inv"] / qty_new
+            n += 1
+    return n
 
 
 # ============================================================

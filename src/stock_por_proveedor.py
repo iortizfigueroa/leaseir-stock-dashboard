@@ -24,7 +24,6 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 PROJECT_DIR = Path(__file__).resolve().parent if "__file__" in dir() else Path(".")
-PROJECT_DIR = Path(r"/sessions/stoic-gallant-albattani/mnt/Donet (inventario)")
 
 DAILY_FILE = PROJECT_DIR / "ejercicio 28-05-2026.xlsx"
 OUTPUT_FILE = PROJECT_DIR / "Stock_por_proveedor.xlsx"

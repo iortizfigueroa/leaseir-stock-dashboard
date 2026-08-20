@@ -263,6 +263,9 @@ def _fallback(daily_file):
     for row in inv:
         row["cat"] = master.classify(row, suppliers)
     unit_cost = master.build_unit_costs(inv)
+    # Corregir cantidades absurdas de OFs en vuelo (usa coste teorico del BOM
+    # con los costes ya estabilizados por COST_MEMORY)
+    master.reinfer_of_quantities(inv, unit_cost)
     recon = master.reconcile(inv, unit_cost)
     rollup = master.build_rollup(inv, recon, unit_cost, suppliers, {})
     return recon, rollup, inv, unit_cost
