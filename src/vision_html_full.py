@@ -1251,11 +1251,103 @@ def main():
                           key=lambda r: -(r["pend"].get(r["last_seen"], 0) + sum(abs(v) for v in r["de"].values())))
     print(f"  Fase 3: {len(of_rows_list)} OFs seguidas en 'en vuelo'; pendiente ancla = {of_pend_tot.get(of_days[-1] if of_days else '', 0):,.0f} EUR")
 
+    # === FASE 3.1: vigilancia de PRECIOS DE FICHA ===
+    # Para cada WIP fisico del inventario del ancla: precio de ficha SAP
+    # (valor/cantidad en libros) vs suma real de sus materiales al coste de HOY
+    # (precios de compra reales via PURCHASE_HISTORY). Se recalcula en cada
+    # corrida: si los costes de compra cambian, la desviacion se reajusta sola.
+    # Sin mano de obra, overhead ni servicios externos (confirmado), toda
+    # desviacion estable aqui es una ficha a revisar en SAP.
+    def _cu_anchor_f(sp):
+        _i = info_29.get(sp) or info_29.get(master.base_spec(sp)) or {}
+        return _i.get("unit_cost", 0) or 0
+
+    def _materiales_f(canon):
+        if canon in master.ESCANDALLOS:
+            return sum(q * _cu_anchor_f(r) for r, q in expand_bom_ui(canon).items())
+        rec_q = getattr(master, "QUARANTINED_RECIPES", {}).get(canon)
+        if rec_q is not None:
+            tot = 0.0
+            for child, q in rec_q:
+                if child in master.ESCANDALLOS:
+                    tot += q * sum(qq * _cu_anchor_f(r) for r, qq in expand_bom_ui(child).items())
+                else:
+                    tot += q * _cu_anchor_f(child)
+            return tot
+        return None
+
+    fichas_rows = []
+    try:
+        _wb_f = openpyxl.load_workbook(ej_files[-1][2], data_only=True, read_only=True)
+        _sh_f = next((n for n in _wb_f.sheetnames if n.lower().strip() == "inventario"), None)
+        _agg_f = {}
+        if _sh_f:
+            for _r in _wb_f[_sh_f].iter_rows(values_only=True, min_row=2):
+                if not _r or not _r[0] or len(_r) < 4:
+                    continue
+                _code = str(_r[0]).strip()
+                _canon = normalize_code(_code)
+                _base = master.base_spec(_canon)
+                _quar = getattr(master, "QUARANTINED_RECIPES", {})
+                if _canon not in master.ESCANDALLOS and _canon not in _quar and _base not in master.QUARANTINED_BOMS:
+                    continue
+                try:
+                    _q = float(_r[2] or 0)
+                    _v = float(_r[3] or 0)
+                except (TypeError, ValueError):
+                    continue
+                if _q <= 0:
+                    continue
+                _a = _agg_f.setdefault(_base, {"qty": 0.0, "val": 0.0, "canon": _canon,
+                                               "desc": str(_r[1] or "")[:60]})
+                _a["qty"] += _q
+                _a["val"] += _v
+        _wb_f.close()
+        for _b, _a in _agg_f.items():
+            _ficha = _a["val"] / _a["qty"]
+            _mat = _materiales_f(_a["canon"])
+            if _mat is None or _mat <= 0:
+                continue
+            _dif = _ficha - _mat
+            if abs(_dif) < 5 or abs(_dif * _a["qty"]) < 150:
+                continue
+            # Parte EXPLICADA de la diferencia = su PATRON NORMAL historico
+            # (FICHAS_NORMAL, mediana de 50 ejercicios). Fallback: contenido
+            # de lineas PROC de su expansion. El residual = dif - patron es la
+            # unica cifra a vigilar (solo crece si algo se desvia de nuevo).
+            _refurb = _b in master.QUARANTINED_BOMS
+            _normal = getattr(master, "FICHAS_NORMAL", {}).get(_b)
+            if _normal is None:
+                if _refurb:
+                    _normal = _dif
+                else:
+                    _normal = 0.0
+                    if _a["canon"] in master.ESCANDALLOS:
+                        for _rr, _qq in master.expand_bom(_a["canon"]).items():
+                            if str(_rr).startswith("PROC-"):
+                                _normal += _qq * master.PROCESS_COSTS.get(str(_rr)[5:], 0.0)
+            _expl = _normal
+            _resid = _dif - _expl
+            fichas_rows.append({"spec": _b, "desc": _a["desc"], "qty": _a["qty"],
+                                "ficha": _ficha, "mat": _mat, "dif": _dif,
+                                "expl": _expl, "resid": _resid,
+                                "impacto": _dif * _a["qty"],
+                                "imp_resid": _resid * _a["qty"],
+                                "cuarentena": _refurb})
+        fichas_rows.sort(key=lambda r: -abs(r["imp_resid"]))
+    except Exception as _e:
+        print(f"  WARN fichas: {_e}")
+    fichas_total = sum(r["impacto"] for r in fichas_rows)
+    fichas_resid = sum(r["imp_resid"] for r in fichas_rows)
+    print(f"  Recetas vs libros: {len(fichas_rows)} filas; dif bruta neta = {fichas_total:,.0f} EUR; RESIDUAL no explicado = {fichas_resid:,.0f} EUR")
+
     payload = {
         "days": day_labels, "last": last_lbl,
         "real_days": ["30-04"] + of_days,
         "of_flows": {"days": of_days, "rows": of_rows_list},
         "of_pend": of_pend_tot,
+        "fichas": {"rows": fichas_rows, "total": fichas_total, "resid": fichas_resid,
+                   "dia": ej_files[-1][1] if ej_files else ""},
         "mov_days": mov_day_labels,
         "stock": stock_high,
         "others_stock_u": others_stock,

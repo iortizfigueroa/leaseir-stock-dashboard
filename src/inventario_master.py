@@ -94,26 +94,33 @@ PROXY_COSTS: dict[str, float] = {
     "SPEC-733": 2200.0,
 }
 
-# BOMs en CUARENTENA: escandallos con inconsistencia grave y persistente frente
-# al valor SAP, pendientes de revision manual. Mientras esten aqui, el WIP se
-# trata como "sin escandallo" (bolsa D, valor directo) en vez de descomponerse
-# con una receta que sabemos incorrecta.
-#  - SPEC-1428 (AHR CONSOLE 220V DUAL): su BOM suma ~5,2k EUR/u de materiales
-#    pero SAP la valora a ~2,4k EUR/u de forma estable (medido 27-may a 19-ago).
-#    O el escandallo tiene componentes de mas, o la consola esta infravalorada.
+# BOMs en CUARENTENA: WIPs cuya receta teorica NO representa el coste real de
+# las unidades en stock. Mientras esten aqui, el WIP se trata como "sin
+# escandallo" (bolsa D, valor directo en libros) en vez de descomponerse.
+#  - SPEC-1428 (AHR CONSOLE 220V DUAL): las unidades en stock son REFURBISHED
+#    (confirmado por Nacho 24-08-2026): solo llevan algunas piezas nuevas y el
+#    resto recuperadas a coste cero, por eso valen ~2,4k EUR/u aunque la receta
+#    completa sume ~6k. La receta solo aplicaria a una AHR fabricada de cero.
 QUARANTINED_BOMS: set[str] = {"SPEC-1428"}
 
-# Coste de PROCESO EXTERNO / diferencial estable por WIP (EUR por unidad).
+# Recetas retiradas por la cuarentena, conservadas para poder calcular el
+# coste teorico de materiales en informes (p.ej. vigilancia de fichas).
+QUARANTINED_RECIPES: dict[str, list] = {}
+
+# DIFERENCIAL DE PRECIO DE FICHA por WIP (EUR por unidad).
+# (Antes etiquetado "proceso externo": Nacho confirmo el 24-08-2026 que NO hay
+# servicios externos, mano de obra ni overhead en produccion. Estos importes son
+# la diferencia entre el precio de ficha con el que SAP recibe el semielaborado
+# al terminar la OF y la suma real de sus materiales — revalorizacion contable,
+# probablemente fichas heredadas de cuando estas piezas se compraban terminadas.)
 # Calibrado el 20-08-2026 sobre los 47 ejercicios (27-may a 19-ago): mediana del
-# drift/unidad (valor SAP - materiales BOM) de cada WIP fisico, exigiendo IQR/mediana
-# < 0.6 (estable) y descontando jerarquicamente el proceso de los sub-WIPs que
-# contiene para no contar dos veces (p.ej. el soldado 841 queda a 0 porque su
-# drift ya lo explica el cromado del 701 que lleva dentro).
-# Cubre cromado/soldadura de capilares, coating de tips, y el diferencial estable
-# de consolas/packaging. Se inyecta como linea sintetica "PROC-<SPEC>" en el
-# escandallo, de modo que TODO el pipeline (bolsa B, rollup, movimientos,
-# entregas) lo trata como un material mas.
-# Para recalibrar: correr de nuevo la mediana de drift/u por WIP y actualizar.
+# drift/unidad (valor SAP - materiales BOM) de cada WIP fisico, exigiendo
+# IQR/mediana < 0.6 (estable) y descontando jerarquicamente el diferencial de los
+# sub-WIPs que contiene para no contar dos veces.
+# Se inyecta como linea sintetica "PROC-<SPEC>" en el escandallo para que el
+# modelo cuadre con los LIBROS de SAP tal y como estan hoy. Cuando se corrijan
+# las fichas en SAP, RECALIBRAR (los valores iran a ~0) — la pestaña "Fichas"
+# del dashboard vigila la desviacion actual dia a dia.
 PROCESS_COSTS: dict[str, float] = {
     "SPEC-1395": 12.18,   # Dual Aesthetic Handpiece
     "SPEC-1436": 19.05,
@@ -140,6 +147,35 @@ PROCESS_COSTS: dict[str, float] = {
     "SPEC-858": 15.31,
     "SPEC-928": 15.71,    # Single-b capillary chrome coated
     "SPEC-943": 22.64,    # Single-b capillary welded
+}
+
+# PATRON NORMAL de "valor en libros vs receta fisica" por WIP (EUR/unidad).
+# Mediana historica (50 ejercicios, 27-may a 24-ago-2026) de la diferencia entre
+# el valor unitario en libros de cada semielaborado en stock y la suma de sus
+# materiales fisicos. Positivo = vale mas que su receta (consumos fuera de
+# escandallo, historico de compra terminado); negativo = vale menos
+# (refurbished con piezas recuperadas a cero, p.ej. SPEC-1428 a -3.682,8/u).
+# Solo se fija patron a piezas ESTABLES (IQR/mediana < 0.8); las inestables
+# (mezcla de unidades nuevas y refurbished, p.ej. 1392) quedan sin patron y su
+# diferencia aparece como residual en la pestaña Fichas.
+# Uso: la pestaña "Fichas" del dashboard muestra la DESVIACION RESIDUAL
+# (diferencia de hoy - patron), que es la unica cifra a vigilar.
+FICHAS_NORMAL: dict[str, float] = {
+    "SPEC-1428": -3682.82, "SPEC-479110": -714.39, "SPEC-752230D": 563.62,
+    "SPEC-711": -365.29, "SPEC-752230Q": 359.99, "SPEC-1468": -350.81,
+    "SPEC-752230DB": 262.48, "SPEC-685": 201.67, "SPEC-752230S": -188.72,
+    "SPEC-666": 172.41, "SPEC-687": 126.04, "SPEC-586110D": 119.95,
+    "SPEC-1395": 114.35, "SPEC-1313": -94.91, "SPEC-330": 93.8,
+    "SPEC-858": 91.05, "SPEC-212": 90.93, "SPEC-854": 87.04,
+    "SPEC-701": 85.97, "SPEC-1466": 85.92, "SPEC-705": 75.74,
+    "SPEC-841": 74.22, "SPEC-853": 72.67, "SPEC-842": 69.81,
+    "SPEC-748": -48.08, "SPEC-749": -45.91, "SPEC-594": 41.34,
+    "SPEC-464": 40.86, "SPEC-856": 38.36, "SPEC-943": 38.35,
+    "SPEC-1440": 37.98, "SPEC-461": 37.77, "SPEC-459": 35.09,
+    "SPEC-428": 32.25, "SPEC-426": 26.99, "SPEC-362": 22.0,
+    "SPEC-427": 21.26, "SPEC-1436": 19.05, "SPEC-615": 17.5,
+    "SPEC-928": 15.71, "SPEC-226": 15.02, "SPEC-232": 10.42,
+    "SPEC-40": 10.34, "SPEC-232Pack": 9.39, "SPEC-465": 6.03,
 }
 
 # Mapping proveedor -> tipo de componente (19 categorias)
@@ -298,6 +334,7 @@ def load_escandallos():
     # Cuarentena: retirar BOMs marcados como inconsistentes (ver QUARANTINED_BOMS)
     for parent in list(ESCANDALLOS.keys()):
         if base_spec(parent) in QUARANTINED_BOMS:
+            QUARANTINED_RECIPES[parent] = ESCANDALLOS[parent]
             del ESCANDALLOS[parent]
 
     # Inyectar lineas de PROCESO EXTERNO (cromado/soldadura/diferencial estable)
@@ -311,7 +348,7 @@ def load_escandallos():
             proc_code = f"PROC-{pbase}"
             if not any(ch == proc_code for ch, _ in ESCANDALLOS[parent]):
                 ESCANDALLOS[parent].append((proc_code, 1.0))
-            SPEC_DESC_FROM_BOM.setdefault(proc_code, f"Proceso externo / diferencial estable de {pbase}")
+            SPEC_DESC_FROM_BOM.setdefault(proc_code, f"Diferencial precio de ficha SAP de {pbase}")
 
 
 def expand_bom(spec: str, visited: set[str] | None = None) -> dict[str, float]:
