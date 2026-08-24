@@ -133,6 +133,7 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
   <div class="tab" data-tab="entradas">Entradas mes <span class="badge" id="badge-entradas"></span></div>
   <div class="tab" data-tab="salidas">Salidas mes <span class="badge" id="badge-salidas"></span></div>
   <div class="tab" data-tab="cliente">Salidas x cliente <span class="badge" id="badge-cliente"></span></div>
+  <div class="tab" data-tab="fabrica">🏭 Fábrica (OFs) <span class="badge" id="badge-fabrica"></span></div>
   <div class="tab" data-tab="simulacion">🔮 Planificación <span class="badge" id="badge-sim"></span></div>
 </div>
 </header>
@@ -185,6 +186,7 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
 <div class="tab-content" id="tab-entradas"><table id="table-entradas"></table></div>
 <div class="tab-content" id="tab-salidas"><table id="table-salidas"></table></div>
 <div class="tab-content" id="tab-cliente"><table id="table-cliente"></table></div>
+<div class="tab-content" id="tab-fabrica"><table id="table-fabrica"></table></div>
 <div class="tab-content" id="tab-simulacion"><div id="sim-summary"></div><table id="table-simulacion"></table></div>
 </main>
 
@@ -212,7 +214,7 @@ const DAYS = DATA.days;
 const LAST = DATA.last;
 const FIRST = DAYS[0];
 const THRESHOLD = DATA.cost_threshold;
-const REAL_DAYS = ["30-04", "27-05", "28-05", "29-05", "01-06", "02-06"];
+const REAL_DAYS = DATA.real_days || ["30-04", "27-05", "28-05", "29-05", "01-06", "02-06"];
 const MES_ABBR = {"01":"ene","02":"feb","03":"mar","04":"abr","05":"may","06":"jun","07":"jul","08":"ago","09":"sep","10":"oct","11":"nov","12":"dic"};
 const MES_LONG = {"01":"Enero","02":"Febrero","03":"Marzo","04":"Abril","05":"Mayo","06":"Junio","07":"Julio","08":"Agosto","09":"Septiembre","10":"Octubre","11":"Noviembre","12":"Diciembre"};
 const DASH_YEAR = 2026;
@@ -503,6 +505,17 @@ function renderResumenVisual(rows) {
   });
   const ajusteNoRastreado = variacion - (totEntVal - totSalVal);
 
+  // FASE 3: Δ del valor pendiente de las OFs en vuelo dentro del scope
+  const ofPend = DATA.of_pend || {};
+  function pendAt(day) {
+    if (ofPend[day] != null) return ofPend[day];
+    let idx = DAYS.indexOf(day);
+    for (let i = idx; i >= 0; i--) { if (ofPend[DAYS[i]] != null) return ofPend[DAYS[i]]; }
+    return null;
+  }
+  const ofStart = pendAt(startDay), ofEnd = pendAt(endDay);
+  const dOF = (ofStart != null && ofEnd != null) ? (ofEnd - ofStart) : null;
+
   // Top movers (scope-based)
   const moversList = rows.map(r => {
     const netU = (scopeEntPerSpec[r.spec]||0) - (scopeSalPerSpec[r.spec]||0);
@@ -544,7 +557,12 @@ function renderResumenVisual(rows) {
   h += eqRow("(+) Entradas", totEntVal, "#0d7a5f");
   h += eqRow("(−) Salidas", -totSalVal, "#c0492f");
   if (Math.abs(ajusteNoRastreado) > 1) {
-    h += eqRow("(±) Ajuste no rastreado", ajusteNoRastreado, "#b8862f");
+    if (dOF != null && Math.abs(dOF) > 1) {
+      h += eqRow("(±) Fábrica: Δ OFs en vuelo", dOF, "#7a5ea8");
+      h += eqRow("(±) Resto no explicado", ajusteNoRastreado - dOF, "#b8862f");
+    } else {
+      h += eqRow("(±) Ajuste no rastreado", ajusteNoRastreado, "#b8862f");
+    }
   }
   // Milestone intermedio: ultimo dia de cada mes dentro del scope
   if (isMensual) {
@@ -562,7 +580,7 @@ function renderResumenVisual(rows) {
   h += '<div style="height:1px;background:#3f5a63;margin:5px 0 3px;"></div>';
   h += eqRow("Inventario " + lblPretty(endDay), totalLast, "#0a2730", true);
   h += '</div>';
-  h += '<div style="font-size:10px;color:#6b8088;margin-top:8px;font-style:italic;">Ajuste = devoluciones, refurbished, revaloraciones cu y escandallos incompletos no recogidos en entradas/salidas SAP.</div>';
+  h += '<div style="font-size:10px;color:#6b8088;margin-top:8px;font-style:italic;">Fábrica = avance del valor "emitido y no recibido" de las OFs (detalle en pestaña 🏭). Resto = revaloraciones cu, devoluciones y diferencias de emisión/recepción.</div>';
   h += '</div>';
 
   h += '<div style="grid-column: 2;"><div style="font-size:13px;font-weight:600;color:#0d7a5f;margin-bottom:6px;">⬆ Top componentes que SUBIERON stock</div>';
@@ -1295,7 +1313,7 @@ function rerender() {
   // Selector mes: visible en stock/entradas/salidas/cliente
   const grpMonth = document.getElementById("grp-month");
   if (grpMonth) {
-    if (currentTab === "stock" || currentTab === "entradas" || currentTab === "salidas" || currentTab === "cliente") grpMonth.classList.remove("hidden");
+    if (currentTab === "stock" || currentTab === "entradas" || currentTab === "salidas" || currentTab === "cliente" || currentTab === "fabrica") grpMonth.classList.remove("hidden");
     else grpMonth.classList.add("hidden");
   }
   // Vista diaria/mensual: ocultar en entradas/salidas/cliente/simulacion (sólo stock)
@@ -1317,6 +1335,7 @@ function rerender() {
   else if (currentTab === "cliente") n = renderCliente(q);
   else if (currentTab === "simulacion") n = renderSimulacion(q);
   else if (currentTab === "salidas") n = renderSalidas(q);
+  else if (currentTab === "fabrica") n = renderFabrica(q);
   else n = renderMov(currentTab, q);
   document.getElementById("rowcount").textContent = n + " filas";
   if (window._renderInventarioChart && (currentTab === "stock" || currentTab === "simulacion")) window._renderInventarioChart();
@@ -1325,6 +1344,61 @@ function rerender() {
 function getSalidasMode() {
   const r = document.querySelector('input[name=salidasmode]:checked');
   return r ? r.value : "raw";
+}
+
+// FASE 3: pestaña Fábrica (OFs en vuelo) — Δemitido / Δrecibido por OF y día
+function renderFabrica(q) {
+  const flows = DATA.of_flows || {days: [], rows: []};
+  const m = window._activeMonth;
+  const days = (flows.days || []).filter(d => !m || d.split("-")[1] === m);
+  let rows = flows.rows || [];
+  if (q) {
+    const ql = q.toLowerCase();
+    rows = rows.filter(r => (r.of + " " + r.spec + " " + (r.desc||"") + " " + (r.status||"")).toLowerCase().includes(ql));
+  }
+  rows = rows.filter(r => days.some(d => (r.pend && r.pend[d] != null) || (r.de && r.de[d]) || (r.dr && r.dr[d])));
+  let h = "<thead><tr>";
+  ["OF", "SPEC", "Descripción", "Estado", "Emitido acum.", "Recibido acum.", "Pendiente"].forEach(c => {
+    h += '<th>' + c + '</th>';
+  });
+  days.forEach(d => h += '<th class="day">' + lblPretty(d) + '</th>');
+  h += "</tr></thead><tbody>";
+  const totDe = {}, totDr = {};
+  rows.forEach(r => {
+    const pendNow = r.closed ? 0 : ((r.pend && r.pend[r.last_seen]) || 0);
+    h += "<tr>";
+    h += '<td class="spec" style="cursor:default;">' + escapeHtml(r.of) + (r.closed ? ' <span style="color:#0d7a5f;font-size:9px;font-weight:700;">✔ cerrada</span>' : '') + '</td>';
+    h += '<td style="font-weight:600;">' + escapeHtml(r.spec) + '</td>';
+    h += '<td class="desc">' + escapeHtml(r.desc || "") + '</td>';
+    h += '<td style="font-size:10px;color:#3f5a63;">' + escapeHtml(r.status || "") + '</td>';
+    h += '<td class="num">' + fmtEur(r.emitido || 0) + '</td>';
+    h += '<td class="num">' + fmtEur(r.recibido || 0) + '</td>';
+    h += '<td class="num" style="font-weight:700;">' + fmtEur(pendNow) + '</td>';
+    days.forEach(d => {
+      const de = (r.de && r.de[d]) || 0, dr = (r.dr && r.dr[d]) || 0;
+      totDe[d] = (totDe[d] || 0) + de;
+      totDr[d] = (totDr[d] || 0) + dr;
+      let cell = "";
+      if (de) cell += '<div style="color:#0d7a5f;font-weight:600;white-space:nowrap;">+' + fmtEur(de) + '</div>';
+      if (dr) cell += '<div style="color:#c0492f;font-weight:600;white-space:nowrap;">−' + fmtEur(dr) + '</div>';
+      if (!cell) cell = '<div style="color:#c5d2d6;">·</div>';
+      h += '<td class="num day">' + cell + '</td>';
+    });
+    h += "</tr>";
+  });
+  h += "</tbody><tfoot><tr>";
+  h += '<td colspan="6" style="text-align:right;">TOTAL <span style="color:#0d7a5f;">+emitido a OFs</span> / <span style="color:#c0492f;">−recibido de OFs</span> · Pendiente:</td>';
+  const lastD = days.length ? days[days.length - 1] : null;
+  h += '<td class="num" style="font-weight:700;">' + fmtEur(lastD != null ? ((DATA.of_pend || {})[lastD] || 0) : 0) + '</td>';
+  days.forEach(d => {
+    let cell = "";
+    if (totDe[d]) cell += '<div style="color:#0d7a5f;white-space:nowrap;">+' + fmtEur(totDe[d]) + '</div>';
+    if (totDr[d]) cell += '<div style="color:#c0492f;white-space:nowrap;">−' + fmtEur(totDr[d]) + '</div>';
+    h += '<td class="num">' + (cell || '·') + '</td>';
+  });
+  h += "</tr></tfoot>";
+  document.getElementById("table-fabrica").innerHTML = h;
+  return rows.length;
 }
 
 function renderSalidas(q) {
@@ -1823,6 +1897,7 @@ window._renderKpiCards = renderKpiCards;
 document.getElementById("badge-entradas").textContent = DATA.entradas.length;
 document.getElementById("badge-salidas").textContent = DATA.salidas.length;
 document.getElementById("badge-cliente").textContent = DATA.salidas_cliente.length;
+document.getElementById("badge-fabrica").textContent = ((DATA.of_flows || {}).rows || []).length;
 document.getElementById("badge-sim").textContent = Object.keys(DATA.simulation || {}).length;
 
 // Inventario chart — dos gráficos: diaria mes activo + mensual fin de mes

@@ -94,6 +94,54 @@ PROXY_COSTS: dict[str, float] = {
     "SPEC-733": 2200.0,
 }
 
+# BOMs en CUARENTENA: escandallos con inconsistencia grave y persistente frente
+# al valor SAP, pendientes de revision manual. Mientras esten aqui, el WIP se
+# trata como "sin escandallo" (bolsa D, valor directo) en vez de descomponerse
+# con una receta que sabemos incorrecta.
+#  - SPEC-1428 (AHR CONSOLE 220V DUAL): su BOM suma ~5,2k EUR/u de materiales
+#    pero SAP la valora a ~2,4k EUR/u de forma estable (medido 27-may a 19-ago).
+#    O el escandallo tiene componentes de mas, o la consola esta infravalorada.
+QUARANTINED_BOMS: set[str] = {"SPEC-1428"}
+
+# Coste de PROCESO EXTERNO / diferencial estable por WIP (EUR por unidad).
+# Calibrado el 20-08-2026 sobre los 47 ejercicios (27-may a 19-ago): mediana del
+# drift/unidad (valor SAP - materiales BOM) de cada WIP fisico, exigiendo IQR/mediana
+# < 0.6 (estable) y descontando jerarquicamente el proceso de los sub-WIPs que
+# contiene para no contar dos veces (p.ej. el soldado 841 queda a 0 porque su
+# drift ya lo explica el cromado del 701 que lleva dentro).
+# Cubre cromado/soldadura de capilares, coating de tips, y el diferencial estable
+# de consolas/packaging. Se inyecta como linea sintetica "PROC-<SPEC>" en el
+# escandallo, de modo que TODO el pipeline (bolsa B, rollup, movimientos,
+# entregas) lo trata como un material mas.
+# Para recalibrar: correr de nuevo la mediana de drift/u por WIP y actualizar.
+PROCESS_COSTS: dict[str, float] = {
+    "SPEC-1395": 12.18,   # Dual Aesthetic Handpiece
+    "SPEC-1436": 19.05,
+    "SPEC-212": 90.93,    # Stage 6 MHR Xcell Console
+    "SPEC-226": 14.86,
+    "SPEC-232": 10.42,
+    "SPEC-362": 22.0,     # MHR-b R cover + Hanger
+    "SPEC-40": 10.34,     # Painted MHR-b Hanger port mount
+    "SPEC-426": 26.99,    # Single Tip, Coated
+    "SPEC-427": 21.26,    # Quad Tip, Coated
+    "SPEC-428": 32.25,
+    "SPEC-459": 13.83,
+    "SPEC-461": 10.78,
+    "SPEC-464": 8.61,
+    "SPEC-465": 6.03,
+    "SPEC-594": 38.3,
+    "SPEC-615": 7.16,
+    "SPEC-666": 26.14,
+    "SPEC-701": 85.97,    # Dual-b capillary chrome coated (cromado)
+    "SPEC-705": 75.74,    # Quad-b capillary chrome coated (cromado)
+    "SPEC-752230D": 386.93,
+    "SPEC-752230DB": 62.15,
+    "SPEC-854": 11.3,
+    "SPEC-858": 15.31,
+    "SPEC-928": 15.71,    # Single-b capillary chrome coated
+    "SPEC-943": 22.64,    # Single-b capillary welded
+}
+
 # Mapping proveedor -> tipo de componente (19 categorias)
 SUPPLIER_TO_TYPE: dict[str, str] = {
     "MONOCROM SL":              "Diode",
@@ -246,6 +294,24 @@ def load_escandallos():
     # Sinteticos al final (sobreescriben si chocan)
     for parent, recipe in SYNTHETIC_BOMS.items():
         ESCANDALLOS[canonical(parent)] = [(canonical(c), float(q)) for c, q in recipe]
+
+    # Cuarentena: retirar BOMs marcados como inconsistentes (ver QUARANTINED_BOMS)
+    for parent in list(ESCANDALLOS.keys()):
+        if base_spec(parent) in QUARANTINED_BOMS:
+            del ESCANDALLOS[parent]
+
+    # Inyectar lineas de PROCESO EXTERNO (cromado/soldadura/diferencial estable)
+    # como componente sintetico "PROC-<base>" x1 en cada escandallo cuya base
+    # este calibrada en PROCESS_COSTS. Los PROC-* no tienen BOM propio, asi que
+    # expand_bom los trata como raw terminal y todo el pipeline los valora como
+    # un material mas (su coste se siembra en build_unit_costs).
+    for parent in list(ESCANDALLOS.keys()):
+        pbase = base_spec(parent)
+        if pbase in PROCESS_COSTS:
+            proc_code = f"PROC-{pbase}"
+            if not any(ch == proc_code for ch, _ in ESCANDALLOS[parent]):
+                ESCANDALLOS[parent].append((proc_code, 1.0))
+            SPEC_DESC_FROM_BOM.setdefault(proc_code, f"Proceso externo / diferencial estable de {pbase}")
 
 
 def expand_bom(spec: str, visited: set[str] | None = None) -> dict[str, float]:
@@ -571,14 +637,98 @@ def classify(row: dict, supplier_map: dict[str, str]) -> str:
 # Evita que el coste de un componente "desaparezca" (y su material se valore a 0,
 # inflando la Bolsa C) el dia que su stock raw llega a 0.
 COST_MEMORY: dict[str, float] = {}
+COST_MEMORY_DATE: dict[str, str] = {}  # canon -> iso date de la ultima observacion
+
+# Historial de PRECIOS REALES DE COMPRA por SPEC, extraido de la hoja
+# "entradas con SPEC detallada" de todos los ejercicios de PROJECT_DIR.
+# {canon: [(iso_date, coste_unitario), ...]} ordenado por fecha.
+# Cubre tambien SPECs que nunca pasan por stock raw (compras directas a OF,
+# p.ej. diodos Monocrom) y da el precio vigente en cada fecha.
+PURCHASE_HISTORY: dict[str, list] = {}
+_PURCHASE_HISTORY_LOADED = False
 
 
-def build_unit_costs(inventory: list[dict]) -> dict[str, float]:
+def asof_from_name(path) -> str | None:
+    """Extrae la fecha iso de un nombre 'ejercicio DD-MM-YYYY.xlsx' (o None)."""
+    m = re.search(r"(\d{2})-(\d{2})-(\d{4})", str(path))
+    if m:
+        dd, mm, yyyy = m.groups()
+        return f"{yyyy}-{mm}-{dd}"
+    if "30 abril" in str(path).lower():
+        return "2026-04-30"
+    return None
+
+
+def _load_purchase_history() -> None:
+    """Escanea los 'ejercicio DD-MM-YYYY.xlsx' de PROJECT_DIR y construye
+    PURCHASE_HISTORY con los precios unitarios reales de las entradas."""
+    global _PURCHASE_HISTORY_LOADED
+    if _PURCHASE_HISTORY_LOADED:
+        return
+    _PURCHASE_HISTORY_LOADED = True
+    from collections import defaultdict as _dd
+    acc = _dd(dict)  # canon -> {(fecha, doc, qty): cu}  (dedupe entre ejercicios)
+    for path in sorted(PROJECT_DIR.glob("ejercicio *.xlsx")):
+        try:
+            wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        except Exception:
+            continue
+        try:
+            sn = next((s for s in wb.sheetnames
+                       if 'entradas' in s.lower() and 'spec' in s.lower()), None)
+            if not sn:
+                continue
+            sh = wb[sn]
+            for row in sh.iter_rows(values_only=True, min_row=2):
+                if not row or len(row) < 12:
+                    continue
+                f = row[6]
+                if not hasattr(f, "year"):
+                    continue
+                code = str(row[8] or "").strip()
+                if not code.startswith("SPEC-"):
+                    continue
+                try:
+                    qty = float(row[10] or 0)
+                    cu = float(row[11] or 0)
+                except (TypeError, ValueError):
+                    continue
+                if qty <= 0 or cu <= 0:
+                    continue
+                canon = canonical(re.sub(r"_C$", "_c", code))
+                doc = str(row[3] or "").strip()
+                acc[canon][(f.date().isoformat() if hasattr(f, "date") else f.isoformat(), doc, qty)] = cu
+        finally:
+            wb.close()
+    for canon, obs in acc.items():
+        PURCHASE_HISTORY[canon] = sorted((d, cu) for (d, _, _), cu in obs.items())
+
+
+def _last_purchase(canon: str, asof: str | None):
+    """(fecha_iso, coste) de la ultima compra <= asof, o None."""
+    for key in (canon, base_spec(canon)):
+        hist = PURCHASE_HISTORY.get(key)
+        if not hist:
+            continue
+        best = None
+        for d, cu in hist:
+            if asof is None or d <= asof:
+                best = (d, cu)
+            else:
+                break
+        if best:
+            return best
+    return None
+
+
+def build_unit_costs(inventory: list[dict], asof: str | None = None) -> dict[str, float]:
     """Para cada SPEC canonico, calcula coste unitario medio ponderado a partir
     de las filas RAW de ese canonico (excluyendo /DF y /OER).
 
-    Fallback en cascada: coste de hoy -> por base -> ultimo coste conocido
-    (COST_MEMORY, se actualiza en cada llamada) -> PROXY_COSTS."""
+    Fallback en cascada para SPECs sin stock hoy: entre el ultimo coste
+    observado en inventario (COST_MEMORY) y el precio real de la ultima compra
+    <= asof (PURCHASE_HISTORY) gana el mas RECIENTE; despues PROXY_COSTS.
+    `asof` es la fecha iso del ejercicio que se esta valorando."""
     qty_by_canon: dict[str, float] = defaultdict(float)
     val_by_canon: dict[str, float] = defaultdict(float)
     for row in inventory:
@@ -609,17 +759,38 @@ def build_unit_costs(inventory: list[dict]) -> dict[str, float]:
         if q > 0 and b not in unit_cost:
             unit_cost[b] = val_by_base[b] / q
 
-    # Memoria: si hoy no hay stock del SPEC, usar su ultimo coste conocido.
+    # Precios reales de compra disponibles (se carga una sola vez)
+    _load_purchase_history()
+
+    # Memoria: si hoy no hay stock del SPEC, usar el coste conocido mas
+    # RECIENTE entre (a) ultima observacion de inventario (COST_MEMORY) y
+    # (b) ultima compra real <= asof (PURCHASE_HISTORY).
     # (Snapshot de los costes reales de hoy ANTES de mezclar, para que la
     # memoria solo acumule costes observados, nunca proxies ni ecos.)
     todays_real = {c: v for c, v in unit_cost.items() if v > 0}
-    for c, cost in COST_MEMORY.items():
-        unit_cost.setdefault(c, cost)
+    candidates = set(COST_MEMORY) | set(PURCHASE_HISTORY)
+    for c in candidates:
+        if c in unit_cost:
+            continue
+        mem_cost = COST_MEMORY.get(c)
+        mem_date = COST_MEMORY_DATE.get(c, "")
+        pur = _last_purchase(c, asof)
+        if pur and (mem_cost is None or pur[0] > mem_date):
+            unit_cost[c] = pur[1]
+        elif mem_cost is not None:
+            unit_cost[c] = mem_cost
     COST_MEMORY.update(todays_real)
+    if asof:
+        for c in todays_real:
+            COST_MEMORY_DATE[c] = asof
 
-    # Proxies (solo si ni hoy ni la memoria tienen coste)
+    # Proxies (solo si ni hoy, ni memoria, ni compras tienen coste)
     for c, cost in PROXY_COSTS.items():
         unit_cost.setdefault(canonical(c), cost)
+
+    # Costes de proceso externo (lineas sinteticas PROC-<base> del escandallo)
+    for b, cost in PROCESS_COSTS.items():
+        unit_cost[f"PROC-{b}"] = cost
     return unit_cost
 
 

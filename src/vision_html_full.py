@@ -47,12 +47,58 @@ rec = importlib.util.module_from_spec(spec_r)
 spec_r.loader.exec_module(rec)
 
 
+def expand_bom_ui(code, *args, **kwargs):
+    """expand_bom para la capa visual del dashboard: filtra las lineas
+    sinteticas de proceso externo (PROC-*). El proceso se crea al PRODUCIR
+    (sin fila de movimiento), asi que si viajara con las entradas/salidas la
+    propagacion hacia atras acumularia stock de proceso inexistente en el
+    pasado. En la capa visual su stock queda constante al nivel del ancla;
+    la reconciliacion (bolsas A/B/C/D) si lo usa completo via master."""
+    return {r: q for r, q in master.expand_bom(code, *args, **kwargs).items()
+            if not str(r).startswith("PROC-")}
+
+
 def normalize_code(code):
     c = str(code or "").strip()
     if not c:
         return ""
     c = re.sub(r"_C$", "_c", c)
     return master.canonical(c)
+
+
+def load_ofs_en_vuelo_detalle(daily_file):
+    """Lee la hoja 'en vuelo' y devuelve {of_num_str: {spec, desc, status,
+    emitido, recibido, pendiente}} para la FASE 3 (flujo de fabrica)."""
+    out = {}
+    try:
+        wb = openpyxl.load_workbook(daily_file, data_only=True, read_only=True)
+    except Exception:
+        return out
+    try:
+        sn = next((s for s in wb.sheetnames if 'vuelo' in s.lower()), None)
+        if not sn:
+            return out
+        for r in wb[sn].iter_rows(values_only=True, min_row=2):
+            if not r or r[0] is None or len(r) < 8:
+                continue
+            of_num = str(r[0]).strip()
+            spec_code = (str(r[2]) if r[2] is not None else "").strip()
+            if not of_num or not spec_code:
+                continue
+            desc = (str(r[3]) if r[3] is not None else "").strip()
+            status = (str(r[1]) if r[1] is not None else "").strip()
+            def _f(x):
+                try:
+                    return float(x or 0)
+                except (TypeError, ValueError):
+                    return 0.0
+            out[of_num] = {
+                "spec": spec_code, "desc": desc[:60], "status": status,
+                "emitido": _f(r[5]), "recibido": _f(r[6]), "pendiente": _f(r[7]),
+            }
+    finally:
+        wb.close()
+    return out
 
 
 def load_movimientos_por_dia(daily_file):
@@ -97,7 +143,7 @@ def load_movimientos_por_dia(daily_file):
                 if qty <= 0:
                     continue
                 if code in master.ESCANDALLOS:
-                    for raw, q in master.expand_bom(code).items():
+                    for raw, q in expand_bom_ui(code).items():
                         by_day[d]["compras"][raw] += q * qty
                 else:
                     by_day[d]["compras"][code] += qty
@@ -123,7 +169,7 @@ def load_movimientos_por_dia(daily_file):
                 if qty <= 0:
                     continue
                 if code in master.ESCANDALLOS:
-                    for raw, q in master.expand_bom(code).items():
+                    for raw, q in expand_bom_ui(code).items():
                         by_day[d]["salidas"][raw] += q * qty
                 else:
                     by_day[d]["salidas"][code] += qty
@@ -146,7 +192,7 @@ def load_movimientos_por_dia(daily_file):
                 if qty <= 0:
                     continue
                 if code in master.ESCANDALLOS:
-                    for raw, q in master.expand_bom(code).items():
+                    for raw, q in expand_bom_ui(code).items():
                         by_day[d]["salidas"][raw] += q * qty
                 else:
                     by_day[d]["salidas"][code] += qty
@@ -336,7 +382,7 @@ def compute_simulation(stock_real_29may, forecast, minimos, compras_obl):
             if canon_c in master.ESCANDALLOS: canon = canon_c
         if canon not in master.ESCANDALLOS:
             continue
-        try: exp = master.expand_bom(canon)
+        try: exp = expand_bom_ui(canon)
         except: continue
         for mes, uds in meses_dict.items():
             if uds <= 0: continue
@@ -525,6 +571,17 @@ def main():
             new_stock[sp] = new_stock.get(sp, 0) + q
         stocks[lbl_before] = new_stock
 
+    # === FASE 3: dias con inventario REAL usan el rollup real del dia ===
+    # La retropropagacion solo puede seguir compras/entregas; no ve el trafico
+    # con las OFs (emisiones, recepciones, facturas directas). Como el build ya
+    # procesa el inventario completo de CADA ejercicio (days_real), usamos esas
+    # cantidades reales por SPEC y dejamos la retropropagacion solo para los
+    # dias sin ejercicio (huecos tipo 04..26-may).
+    for _lbl_real, _d_real in days_real.items():
+        if _lbl_real in stocks or _lbl_real in day_labels:
+            stocks[_lbl_real] = {sp: i["u_tot"] for sp, i in _d_real["info"].items()}
+    stocks["30-04"] = {sp: i["u_tot"] for sp, i in info_30abr.items()}
+
     # Detalle de entradas/salidas por SPEC raw y dia (para drill-down al hacer click)
     # entradas_detail[spec][day] = [{proveedor, qty, val, doc, from_spec, qty_per_unit}]
     # salidas_detail[spec][day] = [{cliente, wip, qty_wip, qty_per_unit, qty_raw, val_raw, doc, fuente}]
@@ -536,7 +593,7 @@ def main():
         canon = e["spec_canon"]
         cu = e["coste_unit"] or 0
         if canon in master.ESCANDALLOS:
-            for raw_canon, q in master.expand_bom(canon).items():
+            for raw_canon, q in expand_bom_ui(canon).items():
                 raw_base = master.base_spec(raw_canon)
                 qty_raw = q * e["qty"]
                 entradas_detail[raw_base][d_lbl].append({
@@ -562,7 +619,7 @@ def main():
         canon = s["spec_canon"]
         cu = s["coste_unit"] or 0
         if canon in master.ESCANDALLOS:
-            for raw_canon, q in master.expand_bom(canon).items():
+            for raw_canon, q in expand_bom_ui(canon).items():
                 raw_base = master.base_spec(raw_canon)
                 qty_raw = q * s["qty"]
                 salidas_detail[raw_base][d_lbl].append({
@@ -654,6 +711,17 @@ def main():
         for sp, q in mov_by_day[d]["salidas"].items():
             spec_salidas_dia[sp][d_lbl] += q
 
+    # FASE 3: valorar cada dia real al coste unitario DE ESE DIA (no al del
+    # ancla). Para dias sin ejercicio (huecos), coste del ancla como antes.
+    def _cu_day(sp, lbl, fallback):
+        if lbl == "30-04":
+            c = info_30abr.get(sp, {}).get("unit_cost", 0)
+        elif lbl in days_real:
+            c = days_real[lbl]["info"].get(sp, {}).get("unit_cost", 0)
+        else:
+            c = 0
+        return c or fallback
+
     rows = []
     for sp, base in all_specs_data.items():
         row = dict(base)
@@ -661,7 +729,7 @@ def main():
         for lbl in day_labels:
             u = stocks[lbl].get(sp, 0)
             row[f"u_{lbl}"] = u
-            row[f"v_{lbl}"] = u * base["cu"]
+            row[f"v_{lbl}"] = u * _cu_day(sp, lbl, base["cu"])
             row[f"entr_{lbl}"] = spec_compras_dia[sp].get(lbl, 0)
             row[f"sal_{lbl}"] = spec_salidas_dia[sp].get(lbl, 0)
         # Total mes
@@ -787,7 +855,7 @@ def main():
                     if cu <= 0:
                         # estimar via coste teorico del escandallo
                         try:
-                            exp = master.expand_bom(canon if canon in master.ESCANDALLOS else base)
+                            exp = expand_bom_ui(canon if canon in master.ESCANDALLOS else base)
                             cu = sum(q * (cu_by_canon.get(r, 0) or cu_by_canon.get(master.base_spec(r), 0)) for r, q in exp.items())
                         except: cu = 0
                     if cu > 0:
@@ -815,7 +883,7 @@ def main():
     inv_bom_tmp = defaultdict(lambda: defaultdict(float))  # raw_base → {wip_base: qty_acumulada}
     for wip_canon in (master.ESCANDALLOS or {}).keys():
         try:
-            exp = master.expand_bom(wip_canon)
+            exp = expand_bom_ui(wip_canon)
         except Exception:
             continue
         wip_base = master.base_spec(wip_canon)
@@ -978,7 +1046,7 @@ def main():
         # 3) si es WIP, agregamos el proveedor mas usado entre sus raws (ponderado por qty)
         if canon in master.ESCANDALLOS:
             try:
-                exp = master.expand_bom(canon)
+                exp = expand_bom_ui(canon)
             except Exception:
                 exp = {}
             from collections import Counter as _Cnt
@@ -1031,7 +1099,7 @@ def main():
         d_lbl = datetime.fromisoformat(s["fecha"]).strftime("%d-%m")
         if canon in master.ESCANDALLOS:
             try:
-                exp = master.expand_bom(canon)
+                exp = expand_bom_ui(canon)
             except Exception:
                 exp = None
             if exp:
@@ -1136,8 +1204,58 @@ def main():
                 _per_sp[_sp_r] = _ur
         raw_real_per_day[_lbl_r] = _per_sp
 
+    # === FASE 3: flujo de fabrica (OFs en vuelo), diff dia a dia ===
+    # Por cada OF: Δemitido (almacen+facturas -> OF) y Δrecibido (OF -> almacen)
+    # entre ejercicios consecutivos. OF que desaparece = cerrada (su pendiente
+    # restante se apunta como recibido/cerrado ese dia).
+    of_days = []
+    of_snap = {}
+    for _iso_o, _lbl_o, _fn_o in ej_files:
+        of_snap[_lbl_o] = load_ofs_en_vuelo_detalle(_fn_o)
+        of_days.append(_lbl_o)
+    of_rows_agg = {}
+    of_pend_tot = {}
+    _prev_o = None
+    for _lbl_o in of_days:
+        snap = of_snap[_lbl_o]
+        of_pend_tot[_lbl_o] = sum(o["pendiente"] for o in snap.values())
+        for of_num, o in snap.items():
+            r = of_rows_agg.setdefault(of_num, {
+                "of": of_num, "spec": o["spec"], "desc": o["desc"], "status": o["status"],
+                "pend": {}, "de": {}, "dr": {}, "emitido": 0.0, "recibido": 0.0,
+                "last_seen": _lbl_o, "closed": False})
+            r["pend"][_lbl_o] = o["pendiente"]
+            r["emitido"] = o["emitido"]
+            r["recibido"] = o["recibido"]
+            r["status"] = o["status"] or r["status"]
+            r["last_seen"] = _lbl_o
+            r["closed"] = False
+            if _prev_o is not None:
+                po = of_snap[_prev_o].get(of_num)
+                de = o["emitido"] - (po["emitido"] if po else 0.0)
+                dr = o["recibido"] - (po["recibido"] if po else 0.0)
+                if abs(de) > 0.005:
+                    r["de"][_lbl_o] = de
+                if abs(dr) > 0.005:
+                    r["dr"][_lbl_o] = dr
+        if _prev_o is not None:
+            for of_num, po in of_snap[_prev_o].items():
+                if of_num not in snap and of_num in of_rows_agg and not of_rows_agg[of_num]["closed"]:
+                    rc = of_rows_agg[of_num]
+                    rc["closed"] = True
+                    if po["pendiente"] > 0.005:
+                        rc["dr"][_lbl_o] = rc["dr"].get(_lbl_o, 0.0) + po["pendiente"]
+                    rc["pend"][_lbl_o] = 0.0
+        _prev_o = _lbl_o
+    of_rows_list = sorted(of_rows_agg.values(),
+                          key=lambda r: -(r["pend"].get(r["last_seen"], 0) + sum(abs(v) for v in r["de"].values())))
+    print(f"  Fase 3: {len(of_rows_list)} OFs seguidas en 'en vuelo'; pendiente ancla = {of_pend_tot.get(of_days[-1] if of_days else '', 0):,.0f} EUR")
+
     payload = {
         "days": day_labels, "last": last_lbl,
+        "real_days": ["30-04"] + of_days,
+        "of_flows": {"days": of_days, "rows": of_rows_list},
+        "of_pend": of_pend_tot,
         "mov_days": mov_day_labels,
         "stock": stock_high,
         "others_stock_u": others_stock,
