@@ -544,7 +544,7 @@ function renderResumenVisual(rows) {
   function eqRow(label, value, color, bold) {
     const w = Math.min(100, Math.abs(value) / maxAbs * 100);
     return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px;">'
-         + '<div style="flex:0 0 130px;color:#444;' + (bold?'font-weight:700;':'') + '">' + label + '</div>'
+         + '<div style="flex:0 0 190px;color:#444;' + (bold?'font-weight:700;':'') + '">' + label + '</div>'
          + '<div style="flex:1;height:10px;background:linear-gradient(to right, ' + color + ' ' + w + '%, transparent ' + w + '%);border-radius:2px;"></div>'
          + '<div style="flex:0 0 110px;text-align:right;color:' + color + ';font-weight:700;font-variant-numeric:tabular-nums;">' + (value>=0?"+":"") + fmtEur(value) + '</div>'
          + '</div>';
@@ -559,12 +559,10 @@ function renderResumenVisual(rows) {
   h += eqRow("(+) Entradas", totEntVal, "#0d7a5f");
   h += eqRow("(−) Salidas", -totSalVal, "#c0492f");
   if (Math.abs(ajusteNoRastreado) > 1) {
-    if (dOF != null && Math.abs(dOF) > 1) {
-      h += eqRow("(±) Fábrica: Δ OFs en vuelo", dOF, "#7a5ea8");
-      h += eqRow("(±) Resto no explicado", ajusteNoRastreado - dOF, "#b8862f");
-    } else {
-      h += eqRow("(±) Ajuste no rastreado", ajusteNoRastreado, "#b8862f");
-    }
+    // Una sola línea: neto de servicios capitalizados en ficha (cromado/pintado),
+    // procesos refurbish (piezas a coste 0) y material aparcado/liberado en OFs en vuelo.
+    // El detalle por OF sigue en la pestaña 🏭 Fábrica y por pieza en ⚖️ Fichas.
+    h += eqRow("(±) Ajuste por servicios y procesos refurbish", ajusteNoRastreado, "#b8862f");
   }
   // Milestone intermedio: ultimo dia de cada mes dentro del scope
   if (isMensual) {
