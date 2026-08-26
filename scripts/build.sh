@@ -41,6 +41,13 @@ if compgen -G "$ROOT/data/master/SPECS/*.xlsx" > /dev/null; then
           cp "$WORK/Vision_Stock_Mes.html" "$ROOT/docs/index.html"
           cp "$WORK/Vision_Stock_Mes.html" "$ROOT/docs/Vision_Stock_Mes.html"
 
+          # v2 (Vercel): se sirve desde web/ — no toca el dashboard de GitHub Pages
+          if [ -f "$WORK/Vision_Stock_Mes_v2.html" ]; then
+            mkdir -p "$ROOT/web"
+            cp "$WORK/Vision_Stock_Mes_v2.html" "$ROOT/web/index.html"
+            echo "[build] v2 copiado a web/index.html"
+          fi
+
           rm -rf "$WORK"
           echo "[build] OK"
           
