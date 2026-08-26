@@ -133,9 +133,6 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
   <div class="tab" data-tab="entradas">Entradas mes <span class="badge" id="badge-entradas"></span></div>
   <div class="tab" data-tab="salidas">Salidas mes <span class="badge" id="badge-salidas"></span></div>
   <div class="tab" data-tab="cliente">Salidas x cliente <span class="badge" id="badge-cliente"></span></div>
-  <div class="tab" data-tab="fabrica">🏭 Fábrica (OFs) <span class="badge" id="badge-fabrica"></span></div>
-  <div class="tab" data-tab="fichas">⚖️ Fichas <span class="badge" id="badge-fichas"></span></div>
-  <div class="tab" data-tab="simulacion">🔮 Planificación <span class="badge" id="badge-sim"></span></div>
 </div>
 </header>
 
@@ -187,9 +184,6 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
 <div class="tab-content" id="tab-entradas"><table id="table-entradas"></table></div>
 <div class="tab-content" id="tab-salidas"><table id="table-salidas"></table></div>
 <div class="tab-content" id="tab-cliente"><table id="table-cliente"></table></div>
-<div class="tab-content" id="tab-fabrica"><table id="table-fabrica"></table></div>
-<div class="tab-content" id="tab-fichas"><div id="fichas-summary"></div><table id="table-fichas"></table></div>
-<div class="tab-content" id="tab-simulacion"><div id="sim-summary"></div><table id="table-simulacion"></table></div>
 </main>
 
 <div class="modal-bg" id="modalChart" onclick="if(event.target===this)closeChart()">
@@ -214,6 +208,13 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
 const DATA = __DATA__;
 const DAYS = DATA.days;
 const LAST = DATA.last;
+// Día posterior al último ejercicio disponible (aún no transcurrido) → se deja en blanco
+function isAfterLast(lbl) {
+  const p = lbl.split("-"), l = LAST.split("-");
+  const dd = parseInt(p[0], 10), mm = parseInt(p[1], 10);
+  const ld = parseInt(l[0], 10), lm = parseInt(l[1], 10);
+  return mm > lm || (mm === lm && dd > ld);
+}
 const FIRST = DAYS[0];
 const THRESHOLD = DATA.cost_threshold;
 const REAL_DAYS = DATA.real_days || ["30-04", "27-05", "28-05", "29-05", "01-06", "02-06"];
@@ -688,6 +689,8 @@ function renderStock(q) {
           u = r["u_"+c.day] != null ? r["u_"+c.day] : 0;
           v = r["v_"+c.day] != null ? r["v_"+c.day] : 0;
           carryU = u; carryV = v;
+        } else if (isAfterLast(c.day)) {
+          u = null; v = null;  // día aún no transcurrido → en blanco
         } else if (carryU != null) {
           u = carryU; v = carryV; carried = true;
         } else {
@@ -744,7 +747,11 @@ function renderStock(q) {
   h += '<td class="cu">&lt; ' + THRESHOLD + ' EUR</td>';
   LAYOUT.forEach(c => {
     if (c.type === "day") {
-      h += dayCellHtml(ouEff[c.day]||0, ovEff[c.day]||0, dayClsFor(c.day));
+      if (isAfterLast(c.day)) {
+        h += '<td class="day-cell ' + dayClsFor(c.day) + '" style="background:white;color:#cdd5d9;text-align:center;">·</td>';
+      } else {
+        h += dayCellHtml(ouEff[c.day]||0, ovEff[c.day]||0, dayClsFor(c.day));
+      }
     } else {
       // Others Var por mes: sumar totales de others_*_dia (qty) y _val (EUR)
       let oE=0, oS=0, oEv=0, oSv=0;
@@ -785,7 +792,10 @@ function renderStock(q) {
   h += '<td class="left tipo">' + escapeHtml(g.tipo) + '</td>';
   h += '<td class="cu">&mdash;</td>';
   LAYOUT.forEach(c => {
-    if (c.type === "day") h += dayCellHtml(0, g["v_"+c.day]||0, dayClsFor(c.day));
+    if (c.type === "day") {
+      if (isAfterLast(c.day)) h += '<td class="day-cell ' + dayClsFor(c.day) + '" style="background:white;color:#cdd5d9;text-align:center;">·</td>';
+      else h += dayCellHtml(0, g["v_"+c.day]||0, dayClsFor(c.day));
+    }
     else h += '<td class="day-cell" style="background:#fef0e6;border-left:2px solid #d4a843;text-align:center;color:#6b8088;">&mdash;</td>';
   });
   h += "</tr>";
@@ -1943,9 +1953,6 @@ window._renderKpiCards = renderKpiCards;
 document.getElementById("badge-entradas").textContent = DATA.entradas.length;
 document.getElementById("badge-salidas").textContent = DATA.salidas.length;
 document.getElementById("badge-cliente").textContent = DATA.salidas_cliente.length;
-document.getElementById("badge-fabrica").textContent = ((DATA.of_flows || {}).rows || []).length;
-document.getElementById("badge-fichas").textContent = ((DATA.fichas || {}).rows || []).length;
-document.getElementById("badge-sim").textContent = Object.keys(DATA.simulation || {}).length;
 
 // Inventario chart — dos gráficos: diaria mes activo + mensual fin de mes
 function buildScopeTotals(scopeDays, q) {
