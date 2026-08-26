@@ -1451,7 +1451,26 @@ function rawStockLast() {
   return {day: key, map: out};
 }
 function prev3Load() { try { return JSON.parse(localStorage.getItem("lsr_prev3") || "{}"); } catch (e) { return {}; } }
-function prev3Save() { try { localStorage.setItem("lsr_prev3", JSON.stringify(window._prev3)); } catch (e) {} }
+function prev3Save() {
+  try { localStorage.setItem("lsr_prev3", JSON.stringify(window._prev3)); } catch (e) {}
+  // Plan COMPARTIDO: empuja al repo (debounce para agrupar ediciones seguidas)
+  clearTimeout(window._prev3T);
+  window._prev3T = setTimeout(prev3Push, 1200);
+}
+async function prev3Push() {
+  try {
+    const r = await fetch("/api/prevision", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({plan: window._prev3})
+    });
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || ("HTTP " + r.status));
+  } catch (e) {
+    alert("No se pudo guardar el plan compartido de Previsión:\n" + e.message);
+  }
+}
 window._prev3 = window._prev3 || prev3Load();
 
 function prev3Months() {
@@ -1583,7 +1602,7 @@ function renderPrevision(q) {
   // ---------- UI superior ----------
   let u = '<div style="background:white;border-radius:8px;padding:16px 20px;margin:14px 0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
   u += '<div style="font-size:13px;font-weight:700;color:#0a2730;">Salidas: ¿cuántos equipos entregas cada mes?</div>';
-  u += '<div style="font-size:11px;color:#3f5a63;margin:4px 0 10px;">Prefijado con tu ritmo histórico (~' + hist + ' equipos/mes). El reparto entre modelos usa la proporción real de lo que ha salido hasta hoy (ver mix). Las compras de la tabla vienen prefijadas con lo mínimo para no romper mínimos — sustitúyelas por tus compras reales u obligatorias.</div>';
+  u += '<div style="font-size:11px;color:#3f5a63;margin:4px 0 10px;">Prefijado con tu ritmo histórico (~' + hist + ' equipos/mes). El reparto entre modelos usa la proporción real de lo que ha salido hasta hoy (ver mix). Las compras de la tabla vienen prefijadas con lo mínimo para no romper mínimos — sustitúyelas por tus compras reales u obligatorias. <strong>El plan es compartido</strong>: lo que cambies aquí lo verá todo el equipo.</div>';
   u += '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">';
   months.forEach(M => {
     u += '<div style="text-align:center;"><div style="font-size:10px;font-weight:700;color:#3f5a63;">' + M.lbl + '</div>'
@@ -2319,6 +2338,13 @@ fetch("/api/minimos").then(r => r.ok ? r.json() : null).then(j => {
   allStockRows().forEach(r => { r.minimo = Object.prototype.hasOwnProperty.call(m, r.spec) ? m[r.spec] : null; });
   refreshAlertBadge();
   rerender();
+}).catch(() => {});
+// Overlay: plan de Prevision compartido (el estado del repo manda sobre el cache local)
+fetch("/api/prevision").then(r => r.ok ? r.json() : null).then(j => {
+  if (!j || !j.plan || typeof j.plan !== "object") return;
+  window._prev3 = j.plan;
+  try { localStorage.setItem("lsr_prev3", JSON.stringify(j.plan)); } catch (e) {}
+  if (currentTab === "prevision") rerender();
 }).catch(() => {});
 
 // Inventario chart — dos gráficos: diaria mes activo + mensual fin de mes
