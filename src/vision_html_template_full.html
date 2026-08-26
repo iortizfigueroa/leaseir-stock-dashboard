@@ -84,10 +84,12 @@ tbody td.day-cell { padding: 3px 4px; cursor: default; min-width: 70px; }
 tbody td.day-cell.last { background: white; }
 tbody td.day-cell.first { background: white; }
 /* Indicador por celda de día: rojizo si stock < min, amarillo si stock >= 2× min */
-tbody td.day-cell.cell-below-min { background: #fde4e4 !important; }
-tbody td.day-cell.cell-above-min { background: #fef9e7 !important; }
-tbody tr:hover td.day-cell.cell-below-min { background: #fad2d2 !important; }
-tbody tr:hover td.day-cell.cell-above-min { background: #fcefd3 !important; }
+tbody td.day-cell.cell-below-min { background: #f7b8b8 !important; box-shadow: inset 0 0 0 1px #e08585; }
+tbody td.day-cell.cell-above-min { background: #fbe88e !important; box-shadow: inset 0 0 0 1px #e3c94f; }
+tbody tr:hover td.day-cell.cell-below-min { background: #f3a3a3 !important; }
+tbody tr:hover td.day-cell.cell-above-min { background: #f8df6e !important; }
+td.day-cell.cell-below-min .uds { color: #8f1f1f !important; font-weight: 800 !important; }
+td.day-cell.cell-above-min .uds { color: #7a6205 !important; font-weight: 800 !important; }
 .cell-stack { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .cell-stack .uds { font-weight: 600; color: #1a1a1a; font-size: 11px; }
 .cell-stack .eur { font-size: 9px; color: #6b8088; margin-top: 0; }
@@ -397,7 +399,7 @@ function dayCellHtml(uds, val, dayCls, spec, day, entr, sal, minimo, isCarried) 
   let cellCls = "";
   if (minimo != null && minimo > 0 && uds != null) {
     if (uds < minimo) cellCls = " cell-below-min";
-    else if (uds >= 2 * minimo) cellCls = " cell-above-min";
+    else if (uds >= 3 * minimo) cellCls = " cell-above-min";
   }
   let movHtml = "";
   if (spec && day && ((entr && entr > 0) || (sal && sal > 0))) {
@@ -1933,8 +1935,8 @@ function renderKpiCards() {
   if (belowMin.length === 0) belowHtml = '<div style="font-size:10px;opacity:.7;">Ninguno</div>';
   h += '<div class="cu-card" style="min-width:200px;background:rgba(192,73,47,0.25);"><div class="lbl">⚠ Bajo mínimo (Top 3 por c/u)</div><div style="font-size:14px;font-weight:700;margin:2px 0;">' + belowMin.length + ' SPECs</div>' + belowHtml + '</div>';
 
-  // KPI 3: Top 5 SPECs por encima del 200% del mínimo (sobrestockados)
-  const aboveMin = allSpecs.filter(r => r.minimo && r.minimo > 0 && (r["u_"+LAST]||0) >= 2 * r.minimo)
+  // KPI 3: Top 5 SPECs por encima del 300% del mínimo (sobrestockados)
+  const aboveMin = allSpecs.filter(r => r.minimo && r.minimo > 0 && (r["u_"+LAST]||0) >= 3 * r.minimo)
                             .sort((a, b) => ((b["u_"+LAST]||0) * (b.cu||0)) - ((a["u_"+LAST]||0) * (a.cu||0)));
   let aboveHtml = aboveMin.slice(0, 5).map(r => {
     const u = r["u_"+LAST] || 0;
@@ -1943,7 +1945,7 @@ function renderKpiCards() {
     return '<div style="font-size:10px;line-height:1.3;margin-top:1px;"><span style="color:#fff;font-weight:600;">' + escapeHtml(r.spec) + '</span> <span style="opacity:.85;">' + fmtInt(u) + ' (' + ratio.toFixed(1) + 'x)</span><div style="font-size:9px;opacity:.7;">' + escapeHtml(sup) + '</div></div>';
   }).join("");
   if (aboveMin.length === 0) aboveHtml = '<div style="font-size:10px;opacity:.7;">Ninguno</div>';
-  h += '<div class="cu-card" style="min-width:220px;background:rgba(184,134,47,0.25);"><div class="lbl">📦 Sobrestockados &ge;2× mín (Top 5)</div><div style="font-size:14px;font-weight:700;margin:2px 0;">' + aboveMin.length + ' SPECs</div>' + aboveHtml + '</div>';
+  h += '<div class="cu-card" style="min-width:220px;background:rgba(184,134,47,0.25);"><div class="lbl">📦 Sobrestockados &ge;3× mín (Top 5)</div><div style="font-size:14px;font-weight:700;margin:2px 0;">' + aboveMin.length + ' SPECs</div>' + aboveHtml + '</div>';
 
   cuadreEl.innerHTML = h;
 }
