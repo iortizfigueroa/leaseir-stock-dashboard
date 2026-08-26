@@ -31,6 +31,9 @@ import openpyxl
 PROJECT_DIR = Path(__file__).resolve().parent
 OUTPUT_HTML = PROJECT_DIR / "Vision_Stock_Mes.html"
 TEMPLATE = PROJECT_DIR / "vision_html_template_full.html"
+# v2 (Vercel): mismo payload, template con Alertas + Prevision. Solo se genera si existe.
+OUTPUT_HTML_V2 = PROJECT_DIR / "Vision_Stock_Mes_v2.html"
+TEMPLATE_V2 = PROJECT_DIR / "vision_html_template_v2.html"
 COST_THRESHOLD = 50.0
 
 sys.path.insert(0, str(PROJECT_DIR))
@@ -1341,6 +1344,31 @@ def main():
     fichas_resid = sum(r["imp_resid"] for r in fichas_rows)
     print(f"  Recetas vs libros: {len(fichas_rows)} filas; dif bruta neta = {fichas_total:,.0f} EUR; RESIDUAL no explicado = {fichas_resid:,.0f} EUR")
 
+    # BOM directo (v2/Prevision): parent_base -> {"desc", "mat": [[raw_base, qty], ...]}
+    # Expansion completa sin lineas PROC-* (unidades fisicas).
+    _desc_lookup = {}
+    for _r in rows:
+        if _r.get("desc"):
+            _desc_lookup.setdefault(_r["spec"], _r["desc"])
+    bom_fwd = {}
+    for _parent in sorted(master.ESCANDALLOS.keys()):
+        _pb = master.base_spec(_parent)
+        if _pb in bom_fwd:
+            continue
+        try:
+            _exp = expand_bom_ui(_parent)
+        except Exception:
+            continue
+        _mats_agg = defaultdict(float)
+        for _rc, _q in _exp.items():
+            _mats_agg[master.base_spec(_rc)] += float(_q)
+        if _mats_agg:
+            bom_fwd[_pb] = {
+                "desc": _desc_lookup.get(_pb, ""),
+                "mat": [[_rb, round(_q, 4)] for _rb, _q in sorted(_mats_agg.items())],
+            }
+    print(f"  BOM directo v2: {len(bom_fwd)} piezas con receta")
+
     payload = {
         "days": day_labels, "last": last_lbl,
         "real_days": ["30-04"] + of_days,
@@ -1379,6 +1407,7 @@ def main():
         "inv_bom": inv_bom,
         "wip_stocks": wip_stocks_per_day,
         "raw_real_per_day": raw_real_per_day,
+        "bom": bom_fwd,
     }
 
     import time as _time
@@ -1400,6 +1429,15 @@ def main():
     _t = _time.time()
     shutil.copyfile(tmp_path, OUTPUT_HTML)
     print(f"  copy to OneDrive: {_time.time()-_t:.1f}s")
+
+    # v2 (Vercel) — mismo payload, template extendido con Alertas + Prevision
+    if TEMPLATE_V2.exists():
+        _t = _time.time()
+        out2 = TEMPLATE_V2.read_text(encoding="utf-8").replace("__DATA__", data_json)
+        tmp2 = Path("/tmp") / OUTPUT_HTML_V2.name
+        tmp2.write_text(out2, encoding="utf-8")
+        shutil.copyfile(tmp2, OUTPUT_HTML_V2)
+        print(f"  v2 render: {_time.time()-_t:.1f}s -> {OUTPUT_HTML_V2.name}")
 
     print(f"  Entradas: {len(entradas_rows)} + {len(entradas_rows_low)} Others")
     print(f"  Salidas: {len(salidas_rows)} + {len(salidas_rows_low)} Others")
