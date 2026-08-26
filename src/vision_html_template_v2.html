@@ -1381,30 +1381,11 @@ function renderAlertas(q) {
 }
 
 // ============================================================
-// V2: PREVISION INTERACTIVA (consumo por receta vs stock/minimos)
+// V2: PREVISION — plan de salidas de equipos + plan de compras
+// Salidas: nº de equipos/mes (mix de modelos según histórico, editable).
+// Entradas: compras por componente/mes (prefijadas con lo mínimo para
+// no romper mínimos; el usuario pone ahí sus compras reales/obligatorias).
 // ============================================================
-function prevLoad() {
-  try { return JSON.parse(localStorage.getItem("lsr_prevision") || "[]"); } catch (e) { return []; }
-}
-function prevSave() {
-  try { localStorage.setItem("lsr_prevision", JSON.stringify(window._prevLines)); } catch (e) {}
-}
-window._prevLines = prevLoad();
-function prevAdd() {
-  const raw = (document.getElementById("prev-spec").value || "").trim();
-  const spec = raw.split("—")[0].trim();
-  const qty = parseFloat(document.getElementById("prev-qty").value) || 0;
-  if (!spec || !(DATA.bom || {})[spec] || qty <= 0) {
-    alert("Elige una pieza de la lista (con receta) y una cantidad mayor que 0.");
-    return;
-  }
-  window._prevLines.push({spec: spec, qty: qty});
-  prevSave();
-  document.getElementById("prev-spec").value = "";
-  rerender();
-}
-function prevDel(i) { window._prevLines.splice(i, 1); prevSave(); rerender(); }
-function prevClear() { window._prevLines = []; prevSave(); rerender(); }
 function rawStockLast() {
   // ultimo dia con foto real de almacen; agrega variantes _c a su base
   const rr = DATA.raw_real_per_day || {};
@@ -1418,90 +1399,219 @@ function rawStockLast() {
   });
   return {day: key, map: out};
 }
+function prev3Load() { try { return JSON.parse(localStorage.getItem("lsr_prev3") || "{}"); } catch (e) { return {}; } }
+function prev3Save() { try { localStorage.setItem("lsr_prev3", JSON.stringify(window._prev3)); } catch (e) {} }
+window._prev3 = window._prev3 || prev3Load();
+
+function prev3Months() {
+  const N = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const l = LAST.split("-");
+  let m = parseInt(l[1], 10), y = DASH_YEAR;
+  const out = [];
+  for (let i = 0; i < 6; i++) {
+    m++; if (m > 12) { m = 1; y++; }
+    out.push({key: y + "-" + String(m).padStart(2, "0"), lbl: N[m] + "-" + String(y).slice(2)});
+  }
+  return out;
+}
+function prev3Equipos() {
+  // Modelos de equipo = SPECs con receta y cu>1500 que han salido a cliente (histórico salidas_wip)
+  const agg = {};
+  (DATA.salidas_wip || []).forEach(r => {
+    const b = (r.spec || "").replace(/_c$/, "");
+    if (!agg[b]) agg[b] = {u: 0, v: 0, desc: r.desc || ""};
+    agg[b].u += r.uds || 0; agg[b].v += r.val || 0;
+    if (r.desc) agg[b].desc = r.desc;
+  });
+  const out = [];
+  Object.keys(agg).forEach(b => {
+    const a = agg[b];
+    const cu = a.u > 0 ? a.v / a.u : 0;
+    if ((DATA.bom || {})[b] && a.u > 0 && cu > 1500) out.push({spec: b, desc: a.desc, u: a.u, cu: cu});
+  });
+  out.sort((a, b) => b.u - a.u);
+  return out;
+}
+function prev3HistRate(equipos) {
+  const meses = {};
+  (DATA.mov_days || []).forEach(d => { meses[d.split("-")[1]] = 1; });
+  const n = Math.max(1, Object.keys(meses).length);
+  const tot = equipos.reduce((s, e) => s + e.u, 0);
+  return Math.max(1, Math.round(tot / n));
+}
+function prev3SetOut(k, v) { window._prev3.out = window._prev3.out || {}; window._prev3.out[k] = Math.max(0, parseFloat(v) || 0); prev3Save(); rerender(); }
+function prev3SetMix(sp, v) { window._prev3.mix = window._prev3.mix || {}; window._prev3.mix[sp] = Math.max(0, parseFloat(v) || 0); prev3Save(); rerender(); }
+function prev3SetCompra(sp, mk, v) { window._prev3.compra = window._prev3.compra || {}; window._prev3.compra[sp + "|" + mk] = Math.max(0, parseFloat(v) || 0); prev3Save(); rerender(); }
+function prev3ResetCompras() { if (window._prev3.compra) delete window._prev3.compra; prev3Save(); rerender(); }
+function prev3Clear() { window._prev3 = {}; prev3Save(); rerender(); }
+function prev3ToggleMix() { window._prev3mixOpen = !window._prev3mixOpen; rerender(); }
+
 function renderPrevision(q) {
-  const BOM = DATA.bom || {};
+  const months = prev3Months();
+  const equipos = prev3Equipos();
+  const hist = prev3HistRate(equipos);
+  const st = window._prev3;
+  const outPlan = {};
+  months.forEach(M => { outPlan[M.key] = (st.out && st.out[M.key] != null) ? st.out[M.key] : hist; });
+
+  // Pesos del mix (histórico, con overrides del usuario)
+  const weights = {};
+  let wSum = 0;
+  equipos.forEach(e => {
+    const w = (st.mix && st.mix[e.spec] != null) ? st.mix[e.spec] : e.u;
+    weights[e.spec] = w; wSum += w;
+  });
+  if (wSum <= 0) { equipos.forEach(e => { weights[e.spec] = e.u; wSum += e.u; }); }
+
   const bySpec = {};
   allStockRows().forEach(r => { if (!bySpec[r.spec]) bySpec[r.spec] = r; });
-  const lines = window._prevLines;
 
-  // ---- UI de escenario ----
-  let u = '<div style="background:white;border-radius:8px;padding:16px 20px;margin:14px 0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
-  u += '<div style="font-size:13px;font-weight:700;color:#0a2730;margin-bottom:4px;">¿Qué vas a fabricar?</div>';
-  u += '<div style="font-size:11px;color:#3f5a63;margin-bottom:10px;">Añade piezas o equipos y sus cantidades. Calculo los componentes que consumirán según sus recetas y los comparo con el stock del almacén y los mínimos. El escenario se guarda en este navegador.</div>';
-  u += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
-  u += '<input list="prev-specs" id="prev-spec" placeholder="Busca SPEC o descripción..." style="flex:2;min-width:260px;padding:7px 10px;border:1px solid #cfe5ea;border-radius:6px;font-size:12px;" autocomplete="off">';
-  u += '<datalist id="prev-specs">';
-  Object.keys(BOM).sort().forEach(sp => {
-    const d = BOM[sp].desc || (bySpec[sp] ? bySpec[sp].desc : "") || "";
-    u += '<option value="' + escapeHtml(sp) + ' — ' + escapeHtml((d || "").substring(0, 50)) + '"></option>';
+  // Consumo por componente y mes
+  const consumo = {}; // comp -> {mkey: uds}
+  months.forEach(M => {
+    const outM = outPlan[M.key];
+    equipos.forEach(e => {
+      const unidades = outM * (weights[e.spec] / wSum);
+      if (unidades <= 0) return;
+      (DATA.bom[e.spec] || {mat: []}).mat.forEach(m => {
+        if (!consumo[m[0]]) consumo[m[0]] = {};
+        consumo[m[0]][M.key] = (consumo[m[0]][M.key] || 0) + m[1] * unidades;
+      });
+    });
   });
-  u += '</datalist>';
-  u += '<input type="number" id="prev-qty" value="1" min="1" step="1" style="width:80px;padding:7px 10px;border:1px solid #cfe5ea;border-radius:6px;font-size:12px;">';
-  u += '<button onclick="prevAdd()" style="padding:7px 16px;background:#0a8aad;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">+ Añadir</button>';
-  if (lines.length) u += '<button onclick="prevClear()" style="padding:7px 12px;background:#f2f5f6;color:#3f5a63;border:1px solid #cfe5ea;border-radius:6px;font-size:12px;cursor:pointer;">Limpiar todo</button>';
-  u += '</div>';
 
-  if (lines.length) {
-    u += '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">';
-    lines.forEach((L, i) => {
-      const d = (BOM[L.spec] || {}).desc || "";
-      u += '<span style="background:#e8f5f8;border:1px solid #cfe5ea;border-radius:16px;padding:4px 12px;font-size:11px;color:#0a2730;">'
-        + '<strong>' + fmtInt(L.qty) + '×</strong> ' + escapeHtml(L.spec) + (d ? ' <span style="color:#6b8088;">' + escapeHtml(d.substring(0, 30)) + '</span>' : "")
-        + ' <span onclick="prevDel(' + i + ')" style="cursor:pointer;color:#c0492f;font-weight:700;margin-left:4px;">✕</span></span>';
+  // Filas individuales (cu>50) y agregado Others (cu<=50 o sin coste conocido)
+  const comps = [];
+  const othersCons = {}; // mkey -> €
+  Object.keys(consumo).forEach(sp => {
+    const r = bySpec[sp] || {};
+    const cu = r.cu || 0;
+    if (cu > 50) comps.push(sp);
+    else months.forEach(M => { othersCons[M.key] = (othersCons[M.key] || 0) + (consumo[sp][M.key] || 0) * cu; });
+  });
+
+  // Proyección por componente: stock0 + compra − consumo, compra prefijada = minimo necesario
+  const rowsCalc = [];
+  comps.forEach(sp => {
+    const r = bySpec[sp] || {};
+    const min = r.minimo || 0;
+    let prev = r["u_" + LAST] || 0;  // mismas unidades que Stock evolutivo (cadena completa)
+    const stock0 = prev;
+    const cells = [];
+    let totCompra = 0, totCompraEur = 0;
+    months.forEach(M => {
+      const cons = consumo[sp][M.key] || 0;
+      const sug = Math.max(0, Math.ceil(min + cons - prev));
+      const key = sp + "|" + M.key;
+      const compra = (st.compra && st.compra[key] != null) ? st.compra[key] : sug;
+      const fin = prev + compra - cons;
+      cells.push({mk: M.key, cons: cons, sug: sug, compra: compra, fin: fin, edited: !!(st.compra && st.compra[key] != null)});
+      totCompra += compra; totCompraEur += compra * (r.cu || 0);
+      prev = fin;
+    });
+    rowsCalc.push({spec: sp, desc: r.desc || "", sup: r.sup || "", cu: r.cu || 0, min: min, stock0: stock0, cells: cells, totCompra: totCompra, totCompraEur: totCompraEur});
+  });
+  rowsCalc.sort((a, b) => (b.totCompraEur - a.totCompraEur) || (b.cu - a.cu));
+
+  const qLow = (q || "").toLowerCase();
+  const rowsShow = rowsCalc.filter(x => !qLow || x.spec.toLowerCase().includes(qLow) || x.desc.toLowerCase().includes(qLow) || x.sup.toLowerCase().includes(qLow));
+
+  // Totales de compras por mes (€)
+  const totalMes = {};
+  months.forEach(M => {
+    let t = 0;
+    rowsCalc.forEach(x => { const c = x.cells.find(cc => cc.mk === M.key); t += (c ? c.compra : 0) * x.cu; });
+    const oKey = "OTHERS|" + M.key;
+    const oCompra = (st.compra && st.compra[oKey] != null) ? st.compra[oKey] : Math.ceil(othersCons[M.key] || 0);
+    totalMes[M.key] = t + oCompra;
+  });
+  const totEquipos = months.reduce((s, M) => s + outPlan[M.key], 0);
+  const totComprasEur = months.reduce((s, M) => s + totalMes[M.key], 0);
+  const nConCompra = rowsCalc.filter(x => x.totCompra > 0).length;
+
+  // ---------- UI superior ----------
+  let u = '<div style="background:white;border-radius:8px;padding:16px 20px;margin:14px 0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+  u += '<div style="font-size:13px;font-weight:700;color:#0a2730;">Salidas: ¿cuántos equipos entregas cada mes?</div>';
+  u += '<div style="font-size:11px;color:#3f5a63;margin:4px 0 10px;">Prefijado con tu ritmo histórico (~' + hist + ' equipos/mes). El reparto entre modelos usa la proporción real de lo que ha salido hasta hoy (ver mix). Las compras de la tabla vienen prefijadas con lo mínimo para no romper mínimos — sustitúyelas por tus compras reales u obligatorias.</div>';
+  u += '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">';
+  months.forEach(M => {
+    u += '<div style="text-align:center;"><div style="font-size:10px;font-weight:700;color:#3f5a63;">' + M.lbl + '</div>'
+      + '<input type="number" min="0" step="1" value="' + outPlan[M.key] + '" onchange="prev3SetOut(\'' + M.key + '\',this.value)" style="width:64px;padding:6px;border:1px solid #cfe5ea;border-radius:6px;font-size:13px;font-weight:700;text-align:center;"></div>';
+  });
+  u += '<div style="margin-left:auto;display:flex;gap:8px;">';
+  u += '<button onclick="prev3ToggleMix()" style="padding:7px 12px;background:#f2f5f6;color:#3f5a63;border:1px solid #cfe5ea;border-radius:6px;font-size:11px;cursor:pointer;">' + (window._prev3mixOpen ? "▼" : "▶") + ' Mix de modelos</button>';
+  u += '<button onclick="prev3ResetCompras()" style="padding:7px 12px;background:#f2f5f6;color:#3f5a63;border:1px solid #cfe5ea;border-radius:6px;font-size:11px;cursor:pointer;">Recalcular compras sugeridas</button>';
+  u += '<button onclick="prev3Clear()" style="padding:7px 12px;background:#fde4e4;color:#c0492f;border:1px solid #f0c0c0;border-radius:6px;font-size:11px;cursor:pointer;">Vaciar plan</button>';
+  u += '</div></div>';
+
+  if (window._prev3mixOpen) {
+    u += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #e4edef;display:flex;gap:8px;flex-wrap:wrap;">';
+    equipos.forEach(e => {
+      const pct = wSum > 0 ? (weights[e.spec] / wSum * 100) : 0;
+      u += '<div style="background:#f7fafb;border:1px solid #e0eaee;border-radius:8px;padding:6px 10px;font-size:10px;color:#0a2730;">'
+        + '<div style="font-weight:700;">' + escapeHtml(e.spec) + ' <span style="color:#0a8aad;">' + pct.toFixed(0) + '%</span></div>'
+        + '<div style="color:#6b8088;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(e.desc.substring(0, 40)) + '</div>'
+        + '<div style="margin-top:3px;">peso: <input type="number" min="0" step="1" value="' + Math.round(weights[e.spec]) + '" onchange="prev3SetMix(\'' + e.spec + '\',this.value)" style="width:48px;padding:2px 4px;border:1px solid #cfe5ea;border-radius:4px;font-size:10px;"> <span style="color:#9fb3ba;">(hist: ' + fmtInt(e.u) + ' uds)</span></div>'
+        + '</div>';
     });
     u += '</div>';
   }
   u += '</div>';
+
+  // Tarjetas resumen
+  u += '<div style="display:flex;gap:12px;margin:0 0 14px;flex-wrap:wrap;">';
+  function pCard(n, lbl, color, bg) {
+    return '<div style="flex:1;min-width:170px;background:' + bg + ';border-left:4px solid ' + color + ';border-radius:8px;padding:10px 14px;"><div style="font-size:20px;font-weight:800;color:' + color + ';">' + n + '</div><div style="font-size:11px;color:#3f5a63;">' + lbl + '</div></div>';
+  }
+  u += pCard(fmtInt(totEquipos), "equipos a entregar en 6 meses", "#0a2730", "#eef4f6");
+  u += pCard(fmtEur(totComprasEur), "compras planificadas (6 meses)", "#0a8aad", "#e8f5f8");
+  u += pCard(nConCompra, "componentes que requieren compra", "#b8862f", "#fef3e2");
+  u += '</div>';
   document.getElementById("prevision-ui").innerHTML = u;
 
-  if (!lines.length) { document.getElementById("table-prevision").innerHTML = ""; return 0; }
+  // ---------- Tabla ----------
+  let h = '<thead><tr><th class="left">Componente</th><th class="left">Descripción</th><th>Coste/u</th><th>Mín.</th><th>Stock hoy</th>';
+  months.forEach(M => { h += '<th style="text-align:center;">' + M.lbl + '</th>'; });
+  h += '<th>Compra 6m</th></tr>';
+  h += '<tr><th colspan="' + (6 + months.length) + '" class="left" style="background:#f7fafb;color:#3f5a63;font-weight:400;font-size:10px;">En cada mes: <strong>stock a fin de mes</strong> (rojo si queda bajo mínimo) · −consumo del plan de salidas · +compra editable. "Stock hoy" = las mismas unidades del Stock evolutivo (almacén + embebidas en producción).</th></tr></thead><tbody>';
 
-  // ---- calculo de necesidades ----
-  const needs = {};
-  lines.forEach(L => {
-    const b = BOM[L.spec];
-    if (!b) return;
-    b.mat.forEach(m => { needs[m[0]] = (needs[m[0]] || 0) + m[1] * L.qty; });
-  });
-  const rawInfo = rawStockLast();
-  const rows = Object.keys(needs).map(sp => {
-    const r = bySpec[sp] || {};
-    const stock = rawInfo.map[sp] || 0;
-    const min = r.minimo || 0;
-    const disponible = Math.max(0, stock - min);
-    const falta = Math.max(0, needs[sp] - disponible);
-    return {spec: sp, desc: r.desc || "", sup: r.sup || "", cu: r.cu || 0,
-            nec: needs[sp], stock: stock, min: min, disp: disponible,
-            falta: falta, eur: falta * (r.cu || 0)};
-  });
-  rows.sort((a, b) => (b.falta - a.falta) || (b.eur - a.eur) || (b.nec - a.nec));
-  const faltan = rows.filter(x => x.falta > 0.001);
-  const totEur = faltan.reduce((s, x) => s + x.eur, 0);
-
-  let h = '<thead><tr><th colspan="9" class="left" style="background:#e8f5f8;color:#0a2730;font-size:12px;border-bottom:2px solid #0a8aad;">'
-    + (faltan.length
-       ? '⚠ Faltan <strong>' + faltan.length + '</strong> componentes para fabricar esto sin romper mínimos — compra estimada <strong>' + fmtEur(totEur) + '</strong>'
-       : '✓ Hay stock suficiente para fabricar todo el escenario sin romper mínimos')
-    + ' <span style="color:#6b8088;font-weight:400;">(almacén a ' + (rawInfo.day ? lblPretty(rawInfo.day) : "—") + '; no cuenta unidades ya embebidas en WIP/OFs)</span></th></tr>';
-  h += '<tr><th class="left">Componente</th><th class="left">Descripción</th><th class="left">Proveedor</th>'
-    + '<th>Coste/u</th><th>Necesario</th><th>Stock almacén</th><th>Mínimo</th><th>Falta</th><th>Compra estimada</th></tr></thead><tbody>';
-  rows.forEach(x => {
-    const bad = x.falta > 0.001;
-    h += '<tr style="' + (bad ? "background:#fde4e4;" : "") + '">';
+  rowsShow.forEach(x => {
+    h += '<tr>';
     h += specCell(x.spec, true);
-    h += '<td class="left desc" title="' + escapeHtml(x.desc) + '">' + escapeHtml(x.desc.substring(0, 60)) + '</td>';
-    h += '<td class="left sup">' + escapeHtml(x.sup) + '</td>';
+    h += '<td class="left desc" title="' + escapeHtml(x.desc) + '">' + escapeHtml(x.desc.substring(0, 45)) + '</td>';
     h += '<td>' + fmtEur(x.cu) + '</td>';
-    h += '<td style="font-weight:700;">' + fmtInt(Math.ceil(x.nec)) + '</td>';
-    h += '<td>' + fmtInt(x.stock) + '</td>';
     h += '<td>' + (x.min ? fmtInt(x.min) : "—") + '</td>';
-    h += '<td style="font-weight:700;color:' + (bad ? "#c0492f" : "#0d7a5f") + ';">' + (bad ? fmtInt(Math.ceil(x.falta)) : "✓") + '</td>';
-    h += '<td>' + (bad ? fmtEur(x.eur) : "—") + '</td>';
+    h += '<td style="font-weight:700;">' + fmtInt(x.stock0) + '</td>';
+    x.cells.forEach(c => {
+      const bad = x.min > 0 ? c.fin < x.min : c.fin < 0;
+      const finColor = bad ? "#c0492f" : "#0d7a5f";
+      h += '<td class="day-cell" style="' + (bad ? "background:#fde4e4;" : "") + 'text-align:center;">'
+        + '<div style="font-weight:800;font-size:12px;color:' + finColor + ';">' + fmtInt(c.fin) + '</div>'
+        + '<div style="font-size:9px;color:#6b8088;white-space:nowrap;">−' + fmtInt(Math.ceil(c.cons)) + ' · +'
+        + '<input type="number" min="0" step="1" value="' + c.compra + '" onchange="prev3SetCompra(\'' + x.spec + '\',\'' + c.mk + '\',this.value)" style="width:52px;padding:1px 3px;border:1px solid ' + (c.edited ? "#0a8aad" : "#dfe9ec") + ';border-radius:4px;font-size:10px;text-align:center;' + (c.edited ? "background:#e8f5f8;font-weight:700;" : "") + '">'
+        + '</div></td>';
+    });
+    h += '<td style="font-weight:700;color:#0a8aad;">' + (x.totCompra > 0 ? fmtInt(x.totCompra) + '<br><span style="font-size:9px;">' + fmtEur(x.totCompraEur) + '</span>' : "—") + '</td>';
     h += '</tr>';
   });
-  h += '</tbody>';
+
+  // Fila Others (componentes <=50€, solo en euros)
+  h += '<tr class="others-row"><td class="left spec">Others</td><td class="left desc">Componentes ≤ 50 €/u (agregado en euros)</td><td colspan="3">&mdash;</td>';
+  months.forEach(M => {
+    const oKey = "OTHERS|" + M.key;
+    const oSug = Math.ceil(othersCons[M.key] || 0);
+    const oCompra = (st.compra && st.compra[oKey] != null) ? st.compra[oKey] : oSug;
+    h += '<td style="text-align:center;font-size:10px;color:#6b8088;">−' + fmtEur(othersCons[M.key] || 0) + '<br>+'
+      + '<input type="number" min="0" step="10" value="' + oCompra + '" onchange="prev3SetCompra(\'OTHERS\',\'' + M.key + '\',this.value)" style="width:58px;padding:1px 3px;border:1px solid #dfe9ec;border-radius:4px;font-size:10px;text-align:center;"> €</td>';
+  });
+  h += '<td>&mdash;</td></tr>';
+
+  // Footer: compras totales €/mes
+  h += '</tbody><tfoot><tr><td colspan="5" class="left">COMPRAS DEL MES (€)</td>';
+  months.forEach(M => { h += '<td style="text-align:center;font-weight:800;color:#0a8aad;">' + fmtEur(totalMes[M.key]) + '</td>'; });
+  h += '<td style="font-weight:800;color:#0a8aad;">' + fmtEur(totComprasEur) + '</td></tr></tfoot>';
   document.getElementById("table-prevision").innerHTML = h;
-  return rows.length;
+  return rowsShow.length;
 }
 
 function rerender() {
