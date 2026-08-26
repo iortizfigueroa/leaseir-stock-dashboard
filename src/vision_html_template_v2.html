@@ -600,6 +600,50 @@ function renderResumenVisual(rows) {
   document.getElementById("resumen-visual").innerHTML = h;
 }
 
+// ============================================================
+// V2: MINIMO EDITABLE POR SPEC (compartido via /api/minimos → repo)
+// ============================================================
+function minCell(r) {
+  const has = r.minimo != null && r.minimo > 0;
+  return '<td class="min-cell" style="background:#f4f7f8;text-align:center;">'
+       + '<input type="number" min="0" step="1" value="' + (has ? r.minimo : "") + '" placeholder="&mdash;"'
+       + ' onchange="setMinimo(\'' + jsesc(r.spec) + '\', this)"'
+       + ' title="Stock m\u00ednimo de ' + jsesc(r.spec) + ' \u2014 en blanco = sin m\u00ednimo"'
+       + ' style="width:54px;padding:2px 4px;border:1px solid #dfe9ec;border-radius:4px;font-size:11px;text-align:center;'
+       + (has ? 'font-weight:700;color:#0a2730;background:white;' : 'color:#9fb3ba;background:#fbfdfd;') + '">'
+       + '</td>';
+}
+async function setMinimo(spec, el) {
+  const raw = String(el.value || "").trim();
+  const v = raw === "" ? null : Math.max(0, Math.round(parseFloat(raw) || 0));
+  el.disabled = true;
+  try {
+    const r = await fetch("/api/minimos", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({spec: spec, minimo: v})
+    });
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || ("HTTP " + r.status));
+    allStockRows().forEach(rr => { if (rr.spec === spec) rr.minimo = v; });
+    refreshAlertBadge();
+    rerender();
+  } catch (e) {
+    el.disabled = false;
+    alert("No se pudo guardar el m\u00ednimo de " + spec + ":\n" + e.message);
+    return;
+  }
+  el.disabled = false;
+}
+function refreshAlertBadge() {
+  const nBajo = alertItems().filter(x => x.u < x.min).length;
+  const el = document.getElementById("badge-alertas");
+  if (!el) return;
+  el.textContent = nBajo;
+  el.style.background = nBajo > 0 ? "#c0492f" : "";
+}
+
 function renderStock(q) {
   const ss = sortState.stock;
   const sortMode = getDaySortMode();
@@ -655,6 +699,7 @@ function renderStock(q) {
     {key: "sup", label: "Proveedor"},
     {key: "tipo", label: "Tipo"},
     {key: "cu", label: "Coste/u", num: true},
+    {key: "minimo", label: "M\u00ednimo \u270e", num: true},
   ];
   LAYOUT.forEach(c => {
     if (c.type === "day") {
@@ -718,6 +763,7 @@ function renderStock(q) {
     h += '<td class="left sup" title="' + escapeHtml(r.sup) + '">' + escapeHtml(r.sup) + '</td>';
     h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
     h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+    h += minCell(r);
     h += renderRowCells(r);
     h += "</tr>";
   });
@@ -751,6 +797,7 @@ function renderStock(q) {
   h += '<td class="left sup">&mdash;</td>';
   h += '<td class="left tipo">&mdash;</td>';
   h += '<td class="cu">&lt; ' + THRESHOLD + ' EUR</td>';
+  h += '<td style="text-align:center;color:#9fb3ba;">&mdash;</td>';
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       if (isAfterLast(c.day)) {
@@ -784,6 +831,7 @@ function renderStock(q) {
       h += '<td class="left sup" title="' + escapeHtml(r.sup) + '">' + escapeHtml(r.sup) + '</td>';
       h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
       h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+    h += minCell(r);
       h += renderRowCells(r);
       h += "</tr>";
     });
@@ -797,6 +845,7 @@ function renderStock(q) {
   h += '<td class="left sup">' + escapeHtml(g.sup) + '</td>';
   h += '<td class="left tipo">' + escapeHtml(g.tipo) + '</td>';
   h += '<td class="cu">&mdash;</td>';
+  h += '<td style="text-align:center;color:#9fb3ba;">&mdash;</td>';
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       if (isAfterLast(c.day)) h += '<td class="day-cell ' + dayClsFor(c.day) + '" style="background:white;color:#cdd5d9;text-align:center;">·</td>';
@@ -843,7 +892,7 @@ function renderStock(q) {
       filteredTotByDay[d] = t;
     });
   }
-  h += "<tr><td colspan='5' class='left'>TOTAL " + (q?"FILTRADO":"INFERIDO (A+B+C+D)") + "</td>";
+  h += "<tr><td colspan='6' class='left'>TOTAL " + (q?"FILTRADO":"INFERIDO (A+B+C+D)") + "</td>";
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       if (DAYS.indexOf(c.day) === -1) {
@@ -862,7 +911,7 @@ function renderStock(q) {
     }
   });
   h += "</tr>";
-  h += "<tr><td colspan='5' class='left diff-row'>TOTAL REAL (SAP, solo dias con fichero)</td>";
+  h += "<tr><td colspan='6' class='left diff-row'>TOTAL REAL (SAP, solo dias con fichero)</td>";
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       const r = DATA.totales_real[c.day];
@@ -2262,12 +2311,15 @@ window._renderKpiCards = renderKpiCards;
 document.getElementById("badge-entradas").textContent = DATA.entradas.length;
 document.getElementById("badge-salidas").textContent = DATA.salidas.length;
 document.getElementById("badge-cliente").textContent = DATA.salidas_cliente.length;
-(function(){
-  const nBajo = alertItems().filter(x => x.u < x.min).length;
-  const el = document.getElementById("badge-alertas");
-  el.textContent = nBajo;
-  if (nBajo > 0) el.style.background = "#c0492f";
-})();
+refreshAlertBadge();
+// Overlay: minimos frescos del repo (ediciones hechas despues del ultimo build)
+fetch("/api/minimos").then(r => r.ok ? r.json() : null).then(j => {
+  if (!j || !j.minimos) return;
+  const m = j.minimos;
+  allStockRows().forEach(r => { r.minimo = Object.prototype.hasOwnProperty.call(m, r.spec) ? m[r.spec] : null; });
+  refreshAlertBadge();
+  rerender();
+}).catch(() => {});
 
 // Inventario chart — dos gráficos: diaria mes activo + mensual fin de mes
 function buildScopeTotals(scopeDays, q) {

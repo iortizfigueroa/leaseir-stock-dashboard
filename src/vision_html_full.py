@@ -696,12 +696,22 @@ def main():
             "cu": info_src.get("unit_cost", 0),
         }
 
-    # Pre-cargar minimos del Live para marcar stocks bajo umbral
-    try:
-        _, minimos_pre, _ = read_live_excel(PROJECT_DIR / "Inventario_Leaseir_Live.xlsx")
-    except Exception:
-        minimos_pre = {}
-    if minimos_pre is None: minimos_pre = {}
+    # Minimos por SPEC: fuente = minimos.json (editable desde la app v2 via /api/minimos).
+    # Fallback legacy: Live Excel (col G, o col F stock-29-may) solo si el json no existe.
+    minimos_pre = {}
+    _mj = PROJECT_DIR / "minimos.json"
+    if _mj.exists():
+        try:
+            minimos_pre = {str(k): float(v) for k, v in json.loads(_mj.read_text(encoding="utf-8")).items()}
+            print(f"  Minimos: {len(minimos_pre)} SPECs desde minimos.json")
+        except Exception as _e:
+            print(f"  WARN minimos.json ilegible: {_e}")
+    if not minimos_pre:
+        try:
+            _, minimos_pre, _ = read_live_excel(PROJECT_DIR / "Inventario_Leaseir_Live.xlsx")
+        except Exception:
+            minimos_pre = {}
+        if minimos_pre is None: minimos_pre = {}
 
     # Construir filas con stocks por dia + movimientos del dia
     # Para movimientos, agregar totales por (spec, day) desde mov_by_day
