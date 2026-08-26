@@ -22,13 +22,23 @@ export default async function handler(req, res) {
 
   if (req.method === "GET") {
     try {
-      const r = await fetch(
-        `https://raw.githubusercontent.com/${REPO}/main/${FILE}`,
-        { headers: { "User-Agent": "leaseir-dashboard" }, cache: "no-store" }
-      );
-      const j = r.ok ? await r.json() : {};
+      let data = {};
+      if (token) {
+        // Contents API con token: SIN cache de CDN (raw.githubusercontent cachea ~5 min)
+        const r = await gh(`/repos/${REPO}/contents/${FILE}?ref=main`);
+        if (r.ok) {
+          const j = await r.json();
+          try { data = JSON.parse(Buffer.from(j.content, "base64").toString("utf-8")); } catch (e) {}
+        }
+      } else {
+        const r = await fetch(
+          `https://raw.githubusercontent.com/${REPO}/main/${FILE}`,
+          { headers: { "User-Agent": "leaseir-dashboard" }, cache: "no-store" }
+        );
+        data = r.ok ? await r.json() : {};
+      }
       res.setHeader("Cache-Control", "no-store");
-      res.status(200).json({ plan: j });
+      res.status(200).json({ plan: data });
     } catch (e) {
       res.status(200).json({ plan: {} });
     }
