@@ -16,6 +16,7 @@ cp "$ROOT/src/"*.html "$WORK/"
 
 # Copiar maestros root (Inventario_MASTER, escandallos consolidados, etc.)
 cp "$ROOT/data/master/"*.xlsx "$WORK/" 2>/dev/null || true
+cp "$ROOT/data/master/minimos.json" "$WORK/" 2>/dev/null || true
 
 # Copiar SPECS/ (escandallos individuales, formato por SPEC)
 if compgen -G "$ROOT/data/master/SPECS/*.xlsx" > /dev/null; then
