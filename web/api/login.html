@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Stock Leaseir — Acceso</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(160deg, #0a2730 0%, #12414f 100%);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .card {
+    background: white; border-radius: 12px; padding: 36px 32px; width: 100%; max-width: 380px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+  }
+  h1 { font-size: 19px; color: #0a2730; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: #6b8088; margin-bottom: 22px; }
+  label { font-size: 11px; font-weight: 700; color: #3f5a63; text-transform: uppercase; letter-spacing: .4px; }
+  input[type=password] {
+    width: 100%; margin: 6px 0 16px; padding: 11px 12px; font-size: 14px;
+    border: 1px solid #cfe5ea; border-radius: 8px; outline: none;
+  }
+  input[type=password]:focus { border-color: #0a8aad; box-shadow: 0 0 0 3px rgba(10,138,173,.15); }
+  button {
+    width: 100%; padding: 12px; background: #0a8aad; color: white; border: none;
+    border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: #087795; }
+  .err {
+    display: none; background: #fde4e4; color: #c0492f; border-left: 4px solid #c0492f;
+    border-radius: 6px; padding: 10px 12px; font-size: 12px; margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Stock Leaseir <span style="font-size:11px;background:#0a8aad;color:white;border-radius:10px;padding:2px 8px;vertical-align:middle;">v2</span></h1>
+    <div class="sub">Dashboard de evolución diaria de stock</div>
+    <div class="err" id="err">Contraseña incorrecta. Inténtalo de nuevo.</div>
+    <form method="POST" action="/api/login">
+      <label for="password">Contraseña</label>
+      <input type="password" id="password" name="password" autofocus autocomplete="current-password">
+      <button type="submit">Entrar</button>
+    </form>
+  </div>
+  <script>
+    if (new URLSearchParams(location.search).get("e")) {
+      document.getElementById("err").style.display = "block";
+    }
+  </script>
+</body>
+</html>
