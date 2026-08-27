@@ -528,15 +528,35 @@ def main():
     sorted_days = sorted(mov_by_day.keys())
     print(f"  {len(sorted_days)} dias con movimientos: {sorted_days[0]} a {sorted_days[-1]}")
 
-    # Entradas y salidas full (dedupe en cliente: rec.cargar_entradas_full filtra por fecha; sumamos de TODOS)
-    entradas_full = []
-    salidas_full = []
+    # Entradas y salidas full. Dedupe ENTRE ficheros (el mismo movimiento se repite en
+    # varios ejercicios) pero CONSERVANDO las lineas repetidas REALES dentro de un mismo
+    # fichero: un albaran de N equipos identicos trae N lineas iguales (1 ud por numero
+    # de serie) y el dedupe plano se las comia (~479k EUR de salidas perdidas).
+    # Estrategia: por cada clave, quedarnos con el MAXIMO de repeticiones visto en un
+    # mismo fichero (igual que hace mov_by_day con las cantidades).
+    def _dedupe_max_por_fichero(rows_por_fichero, keyf):
+        best = {}
+        for rows_f in rows_por_fichero:
+            local = defaultdict(list)
+            for r in rows_f:
+                local[keyf(r)].append(r)
+            for k, rs in local.items():
+                if k not in best or len(rs) > len(best[k]):
+                    best[k] = rs
+        out = []
+        for rs in best.values():
+            out.extend(rs)
+        return out
+
+    entradas_por_fichero = []
+    salidas_por_fichero = []
     for iso, lbl, fn in ej_files:
-        entradas_full += cargar_entradas_full(fn)
-        salidas_full += cargar_salidas_con_cliente_full(fn)
-    # Dedupe por (fecha, spec_emitido, doc, qty) — el mismo movimiento aparece en varios ejercicios
-    seen_e = set(); entradas_full = [e for e in entradas_full if (k := (e["fecha"], e["spec_emitido"], e["doc"], e["qty"])) not in seen_e and not seen_e.add(k)]
-    seen_s = set(); salidas_full = [s for s in salidas_full if (k := (s["fecha"], s["spec_emitido"], s["doc"], s["qty"], s["cliente"])) not in seen_s and not seen_s.add(k)]
+        entradas_por_fichero.append(cargar_entradas_full(fn))
+        salidas_por_fichero.append(cargar_salidas_con_cliente_full(fn))
+    entradas_full = _dedupe_max_por_fichero(
+        entradas_por_fichero, lambda e: (e["fecha"], e["spec_emitido"], e["doc"], e["qty"]))
+    salidas_full = _dedupe_max_por_fichero(
+        salidas_por_fichero, lambda s: (s["fecha"], s["spec_emitido"], s["doc"], s["qty"], s["cliente"]))
 
     print("[4/5] Reconstruyendo stock dia a dia (BACKWARD desde 01-jun)...")
     # Lista de etiquetas en orden: 30-04, luego dias con movimientos
