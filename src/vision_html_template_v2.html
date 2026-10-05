@@ -1447,7 +1447,11 @@ function renderAlertas(q) {
       h += '<td class="left" style="font-size:11px;white-space:nowrap;font-weight:700;color:' + (x.u < x.min ? '#c0492f' : '#9fb3ba') + ';">' + (x.u < x.min ? '✗ sin pedido' : '&mdash;') + '</td>';
     } else {
       let ptxt, pcol;
-      if (pp.next) { ptxt = '✓ ' + fmtInt(pp.uds) + ' uds · próx. ' + pedNextLbl(pp.next); pcol = '#0d7a5f'; }
+      if (pp.next) {
+        ptxt = '✓ ' + fmtInt(pp.uds) + ' uds · próx. ' + pedNextLbl(pp.next);
+        if (pp.venc[0] > 0) ptxt += ' <span style="color:#b8862f;">· ⚠ ' + fmtInt(pp.venc[0]) + ' retrasadas</span>';
+        pcol = '#0d7a5f';
+      }
       else { ptxt = fmtInt(pp.uds) + ' uds · ⚠ fecha vencida'; pcol = '#b8862f'; }
       h += '<td class="left" style="font-size:11px;white-space:nowrap;font-weight:700;color:' + pcol + ';cursor:pointer;" onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')">' + ptxt + '</td>';
     }
@@ -1517,6 +1521,10 @@ function porLlegarCell(r) {
   if (p.next) sub = '<span style="font-size:9px;color:#5b7a85;">pr&oacute;x. ' + pedNextLbl(p.next) + '</span>';
   else if (p.venc[0] > 0) sub = '<span style="font-size:9px;color:#b8862f;">&#9888; fecha vencida</span>';
   else sub = '<span style="font-size:9px;color:#5b7a85;">&mdash;</span>';
+  // Parte retrasada (fecha vencida o «liberamos») además de una próxima fecha firme
+  if (p.next && p.venc[0] > 0) {
+    sub += '<span style="font-size:9px;color:#b8862f;font-weight:700;">&#9888; ' + fmtInt(p.venc[0]) + ' retrasadas</span>';
+  }
   const col = p.next ? '#0d7a5f' : (p.venc[0] > 0 ? '#b8862f' : '#3f5a63');
   return '<td' + click + '><div class="cell-stack">'
        + '<span style="font-weight:700;color:' + col + ';">' + fmtInt(p.uds) + '</span>' + sub
