@@ -1399,6 +1399,139 @@ def main():
             }
     print(f"  BOM directo v2: {len(bom_fwd)} piezas con receta")
 
+    # ============================================================
+    # PEDIDOS DE COMPRA ABIERTOS (v2) — fichero diario de Donet
+    # "pedidos de compra abiertos DD-MM-YYYY.xlsx"
+    # Solo cuentan lineas con Estado Linea "Abierta" y Cantidad pendiente > 0.
+    # Lineas con comentario "liberamos segun necesidad" o fecha vencida van a
+    # la bolsa "venc" (fecha no fiable), no a un mes concreto.
+    # ============================================================
+    pedidos_payload = None
+    try:
+        _ped_files = []
+        for _p in PROJECT_DIR.glob("*edidos de compra abiertos*.xlsx"):
+            _m = re.search(r"(\d{2})-(\d{2})-(\d{4})", _p.name)
+            if _m:
+                _ped_files.append((_date(int(_m.group(3)), int(_m.group(2)), int(_m.group(1))), _p))
+        if _ped_files:
+            _ped_files.sort()
+            _ped_date, _ped_path = _ped_files[-1]
+            # 6 meses vista desde el mes del fichero
+            _ped_months = []
+            _y, _mm = _ped_date.year, _ped_date.month
+            for _i in range(6):
+                _ped_months.append(f"{_y:04d}-{_mm:02d}")
+                _mm += 1
+                if _mm > 12:
+                    _mm = 1
+                    _y += 1
+            # cu del dashboard (evolutivo) por spec
+            _cu_lookup = {}
+            for _r in stock_high + stock_low:
+                if _r.get("cu"):
+                    _cu_lookup.setdefault(_r["spec"], _r["cu"])
+            _wb_p = openpyxl.load_workbook(_ped_path, data_only=True, read_only=True)
+            _ws_p = _wb_p[_wb_p.sheetnames[0]]
+            _ped_rows = {}
+            _ped_nums = set()
+            _ped_provs = set()
+            _n_lineas = 0
+            for _row in _ws_p.iter_rows(min_row=2, values_only=True):
+                if _row[0] is None:
+                    continue
+                _estado_lin = str(_row[12] or "").strip().lower()
+                _pend = float(_row[9] or 0)
+                if not _estado_lin.startswith("abier") or _pend <= 0:
+                    continue
+                _n_lineas += 1
+                _spec = str(_row[5] or "").strip()
+                _prov_n = str(_row[4] or "").strip()
+                _precio = float(_row[13] or 0)
+                _com = str(_row[15] or "").strip() if len(_row) > 15 else ""
+                _lib = "liberamos" in _com.lower()
+                _f = _row[10]
+                _fecha = _f.date() if isinstance(_f, datetime) else (_f if isinstance(_f, _date) else None)
+                _ped_nums.add(_row[1])
+                _ped_provs.add(_prov_n)
+                if _lib or _fecha is None or _fecha < _ped_date:
+                    _bucket = "venc"
+                else:
+                    _mk = f"{_fecha.year:04d}-{_fecha.month:02d}"
+                    _bucket = _mk if _mk in _ped_months else "fut"
+                _e = _ped_rows.setdefault(_spec, {
+                    "spec": _spec, "desc": str(_row[6] or "")[:80],
+                    "sup": _prov_n, "provs": set(),
+                    "cu": _cu_lookup.get(_spec),
+                    "eur": 0.0, "uds": 0.0,
+                    "m": {}, "fut": [0, 0.0], "venc": [0, 0.0],
+                    "next": None, "lineas": [],
+                    "_psum": 0.0, "_pq": 0.0,
+                })
+                _e["provs"].add(_prov_n)
+                _e["eur"] += _pend * _precio
+                _e["uds"] += _pend
+                _e["_psum"] += _pend * _precio
+                _e["_pq"] += _pend
+                if _bucket == "venc":
+                    _e["venc"][0] += _pend
+                    _e["venc"][1] += _pend * _precio
+                elif _bucket == "fut":
+                    _e["fut"][0] += _pend
+                    _e["fut"][1] += _pend * _precio
+                else:
+                    _mb = _e["m"].setdefault(_bucket, [0, 0.0])
+                    _mb[0] += _pend
+                    _mb[1] += _pend * _precio
+                if not _lib and _fecha is not None and _fecha >= _ped_date:
+                    if _e["next"] is None or _fecha.isoformat() < _e["next"]:
+                        _e["next"] = _fecha.isoformat()
+                _e["lineas"].append([
+                    str(_row[1] or ""),
+                    _fecha.isoformat() if _fecha else None,
+                    _pend, _precio, _prov_n, _com,
+                ])
+            _wb_p.close()
+            _rows_out = []
+            for _e in _ped_rows.values():
+                _provs = sorted(_e.pop("provs"))
+                _e["sup"] = _provs[0] + (f" (+{len(_provs)-1})" if len(_provs) > 1 else "")
+                if not _e.get("cu"):
+                    _e["cu"] = round(_e["_psum"] / _e["_pq"], 2) if _e["_pq"] else 0.0
+                _e.pop("_psum"); _e.pop("_pq")
+                _e["m"] = {k: [round(v[0], 1), round(v[1])] for k, v in _e["m"].items()}
+                _e["fut"] = [round(_e["fut"][0], 1), round(_e["fut"][1])]
+                _e["venc"] = [round(_e["venc"][0], 1), round(_e["venc"][1])]
+                _e["eur"] = round(_e["eur"])
+                _e["uds"] = round(_e["uds"], 1)
+                _e["lineas"].sort(key=lambda l: (l[1] or "9999"))
+                _rows_out.append(_e)
+            _rows_out.sort(key=lambda r: -r["eur"])
+            _mes0 = _ped_months[0]
+            _kpi = {
+                "eur": round(sum(r["eur"] for r in _rows_out)),
+                "uds": round(sum(r["uds"] for r in _rows_out)),
+                "lineas": _n_lineas,
+                "pedidos": len(_ped_nums),
+                "provs": len(_ped_provs),
+                "mes_eur": round(sum(r["m"].get(_mes0, [0, 0])[1] for r in _rows_out)),
+                "mes_uds": round(sum(r["m"].get(_mes0, [0, 0])[0] for r in _rows_out)),
+                "venc_eur": round(sum(r["venc"][1] for r in _rows_out)),
+                "venc_uds": round(sum(r["venc"][0] for r in _rows_out)),
+            }
+            pedidos_payload = {
+                "fichero": _ped_date.strftime("%d-%m-%Y"),
+                "months": _ped_months,
+                "kpi": _kpi,
+                "rows": _rows_out,
+            }
+            print(f"  Pedidos abiertos ({_ped_path.name}): {_n_lineas} lineas abiertas, "
+                  f"{_kpi['eur']:,.0f} EUR pendientes, {len(_rows_out)} specs")
+        else:
+            print("  Pedidos abiertos: sin fichero 'pedidos de compra abiertos*.xlsx' — pestaña vacia")
+    except Exception as _e:
+        print(f"  WARN pedidos: {_e}")
+        pedidos_payload = None
+
     payload = {
         "days": day_labels, "last": last_lbl,
         "real_days": ["30-04"] + of_days,
@@ -1438,6 +1571,7 @@ def main():
         "wip_stocks": wip_stocks_per_day,
         "raw_real_per_day": raw_real_per_day,
         "bom": bom_fwd,
+        "pedidos": pedidos_payload,
     }
 
     import time as _time

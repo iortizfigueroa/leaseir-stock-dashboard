@@ -137,6 +137,7 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
   <div class="tab" data-tab="cliente">Salidas x cliente <span class="badge" id="badge-cliente"></span></div>
   <div class="tab" data-tab="alertas">🔔 Alertas <span class="badge" id="badge-alertas"></span></div>
   <div class="tab" data-tab="prevision">📈 Previsión</div>
+  <div class="tab" data-tab="pedidos">📦 Pedidos <span class="badge" id="badge-pedidos"></span></div>
 </div>
 </header>
 
@@ -190,6 +191,7 @@ tfoot td.diff-row { background: #f0f4fa !important; font-style: italic; font-siz
 <div class="tab-content" id="tab-cliente"><table id="table-cliente"></table></div>
 <div class="tab-content" id="tab-alertas"><div id="alertas-summary"></div><table id="table-alertas"></table></div>
 <div class="tab-content" id="tab-prevision"><div id="prevision-ui"></div><table id="table-prevision"></table></div>
+<div class="tab-content" id="tab-pedidos"><div id="pedidos-summary"></div><table id="table-pedidos"></table><div id="pedidos-nota"></div></div>
 </main>
 
 <div class="modal-bg" id="modalChart" onclick="if(event.target===this)closeChart()">
@@ -294,7 +296,8 @@ let sortState = {
   entradas: {col: "val", dir: "desc"},
   salidas: {col: "val", dir: "desc"},
   cliente: {col: "val", dir: "desc"},
-  simulacion: {col: "total_year_eur", dir: "desc"}
+  simulacion: {col: "total_year_eur", dir: "desc"},
+  pedidos: {col: "eur", dir: "desc"}
 };
 
 function setSimSort(col) {
@@ -341,8 +344,8 @@ function makeHeader(cols, tabKey) {
 
 function setSort(tab, col) {
   const ss = sortState[tab];
-  const numKw = ["cu","uds","val","u_stock","v_stock","qty","coste_unit","compras","salidas"];
-  const isNum = numKw.includes(col) || col.startsWith("u_") || col.startsWith("v_");
+  const numKw = ["cu","uds","val","u_stock","v_stock","qty","coste_unit","compras","salidas","eur","fut_u","venc_u","ped_tot","minimo"];
+  const isNum = numKw.includes(col) || col.startsWith("u_") || col.startsWith("v_") || col.startsWith("pm_");
   if (ss.col === col) ss.dir = ss.dir === "asc" ? "desc" : "asc";
   else { ss.col = col; ss.dir = isNum ? "desc" : "asc"; }
   rerender();
@@ -394,7 +397,12 @@ function specCell(sp, clickable) {
 
 function dayCellHtml(uds, val, dayCls, spec, day, entr, sal, minimo, isCarried) {
   // Si el día no está en DAYS (datos no disponibles aún) → celda vacía pendiente
+  // (o badge 📦 si hay una entrega prevista ese día según pedidos abiertos)
   if (day && DAYS.indexOf(day) === -1 && !isCarried) {
+    if (spec && typeof pedBadgeHtml === "function") {
+      const pb = pedBadgeHtml(spec, day, dayCls);
+      if (pb) return pb;
+    }
     return '<td class="day-cell ' + dayCls + '" style="background:white;color:#cdd5d9;font-size:10px;text-align:center;">·</td>';
   }
   const udsCls = (uds === 0 || !uds) ? "uds zero" : "uds";
@@ -700,6 +708,7 @@ function renderStock(q) {
     {key: "tipo", label: "Tipo"},
     {key: "cu", label: "Coste/u", num: true},
     {key: "minimo", label: "M\u00ednimo \u270e", num: true},
+    {key: "ped_tot", label: "\ud83d\udce6 Por llegar", num: true},
   ];
   LAYOUT.forEach(c => {
     if (c.type === "day") {
@@ -764,6 +773,7 @@ function renderStock(q) {
     h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
     h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
     h += minCell(r);
+    h += porLlegarCell(r);
     h += renderRowCells(r);
     h += "</tr>";
   });
@@ -798,6 +808,7 @@ function renderStock(q) {
   h += '<td class="left tipo">&mdash;</td>';
   h += '<td class="cu">&lt; ' + THRESHOLD + ' EUR</td>';
   h += '<td style="text-align:center;color:#9fb3ba;">&mdash;</td>';
+  h += porLlegarEmptyCell();
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       if (isAfterLast(c.day)) {
@@ -832,6 +843,7 @@ function renderStock(q) {
       h += '<td class="left tipo">' + escapeHtml(r.tipo) + '</td>';
       h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
     h += minCell(r);
+      h += porLlegarCell(r);
       h += renderRowCells(r);
       h += "</tr>";
     });
@@ -846,6 +858,7 @@ function renderStock(q) {
   h += '<td class="left tipo">' + escapeHtml(g.tipo) + '</td>';
   h += '<td class="cu">&mdash;</td>';
   h += '<td style="text-align:center;color:#9fb3ba;">&mdash;</td>';
+  h += porLlegarEmptyCell();
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       if (isAfterLast(c.day)) h += '<td class="day-cell ' + dayClsFor(c.day) + '" style="background:white;color:#cdd5d9;text-align:center;">·</td>';
@@ -892,7 +905,7 @@ function renderStock(q) {
       filteredTotByDay[d] = t;
     });
   }
-  h += "<tr><td colspan='6' class='left'>TOTAL " + (q?"FILTRADO":"INFERIDO (A+B+C+D)") + "</td>";
+  h += "<tr><td colspan='7' class='left'>TOTAL " + (q?"FILTRADO":"INFERIDO (A+B+C+D)") + "</td>";
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       if (DAYS.indexOf(c.day) === -1) {
@@ -911,7 +924,7 @@ function renderStock(q) {
     }
   });
   h += "</tr>";
-  h += "<tr><td colspan='6' class='left diff-row'>TOTAL REAL (SAP, solo dias con fichero)</td>";
+  h += "<tr><td colspan='7' class='left diff-row'>TOTAL REAL (SAP, solo dias con fichero)</td>";
   LAYOUT.forEach(c => {
     if (c.type === "day") {
       const r = DATA.totales_real[c.day];
@@ -1399,13 +1412,17 @@ function renderAlertas(q) {
   s += sumCard(below.length, "SPECs BAJO su stock mínimo (a " + lblPretty(LAST) + ")", "#c0492f", "#fde4e4");
   s += sumCard(warn.length, "en zona de aviso (menos de 1,5× el mínimo)", "#b8862f", "#fef3e2");
   s += sumCard(fmtEur(totEur), "compra sugerida para cubrir todos los mínimos", "#0a8aad", "#e8f5f8");
+  if (PED) {
+    const belowPed = below.filter(x => (PED_BY_SPEC[x.r.spec] || {}).uds > 0).length;
+    s += sumCard(belowPed + " / " + below.length, "SPECs bajo mínimo que ya tienen pedido de compra abierto", "#2b6cb0", "#eaf2fb");
+  }
   s += '</div>';
   document.getElementById("alertas-summary").innerHTML = s;
 
   let h = '<thead><tr>'
     + '<th class="left">SPEC</th><th class="left">Descripción</th><th class="left">Proveedor</th>'
     + '<th>Coste/u</th><th>Stock ' + lblPretty(LAST) + '</th><th>Mínimo</th><th>Déficit</th>'
-    + '<th>Cobertura</th><th>Compra sugerida</th><th class="left">Estado</th>'
+    + '<th>Cobertura</th><th>Compra sugerida</th><th class="left" style="background:#1d4e75;">📦 Pedido abierto</th><th class="left">Estado</th>'
     + '</tr></thead><tbody>';
   items.forEach(x => {
     const r = x.r;
@@ -1423,12 +1440,230 @@ function renderAlertas(q) {
     h += '<td style="font-weight:700;color:' + (x.deficit > 0 ? "#c0492f" : "#6b8088") + ';">' + (x.deficit > 0 ? "−" + fmtInt(x.deficit) : "—") + '</td>';
     h += '<td>' + Math.round(x.cob * 100) + '%</td>';
     h += '<td>' + (x.eur > 0 ? fmtEur(x.eur) : "—") + '</td>';
+    const pp = PED_BY_SPEC[r.spec];
+    if (!PED) {
+      h += '<td class="left" style="color:#9fb3ba;">&mdash;</td>';
+    } else if (!pp || !pp.uds) {
+      h += '<td class="left" style="font-size:11px;white-space:nowrap;font-weight:700;color:' + (x.u < x.min ? '#c0492f' : '#9fb3ba') + ';">' + (x.u < x.min ? '✗ sin pedido' : '&mdash;') + '</td>';
+    } else {
+      let ptxt, pcol;
+      if (pp.next) { ptxt = '✓ ' + fmtInt(pp.uds) + ' uds · próx. ' + pedNextLbl(pp.next); pcol = '#0d7a5f'; }
+      else { ptxt = fmtInt(pp.uds) + ' uds · ⚠ fecha vencida'; pcol = '#b8862f'; }
+      h += '<td class="left" style="font-size:11px;white-space:nowrap;font-weight:700;color:' + pcol + ';cursor:pointer;" onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')">' + ptxt + '</td>';
+    }
     h += '<td class="left" style="font-weight:700;color:' + color + ';white-space:nowrap;">' + estado + '</td>';
     h += '</tr>';
   });
   h += '</tbody>';
   document.getElementById("table-alertas").innerHTML = h;
   return items.length;
+}
+
+// ============================================================
+// V2: PEDIDOS DE COMPRA ABIERTOS — fichero diario de Donet (SAP)
+// Solo lineas con Estado Linea "Abierta" y pendiente > 0.
+// "venc" = fecha vencida o "liberamos segun necesidad" (fecha no fiable).
+// ============================================================
+const PED = DATA.pedidos || null;
+const PED_BY_SPEC = {};
+const PED_BY_DAY = {};   // spec -> {"DD-MM": uds} solo fechas firmes del año del dashboard
+const PED_PROVS = {};    // proveedor -> eur pendiente
+window._pedProv = null;  // chip de proveedor activo
+if (PED) {
+  const hoyIso = PED.fichero.split("-").reverse().join("-");
+  PED.rows.forEach(r => {
+    PED_BY_SPEC[r.spec] = r;
+    // campos planos para ordenar con sortRows
+    PED.months.forEach(mk => { r["pm_" + mk] = (r.m[mk] || [0, 0])[0]; });
+    r.fut_u = r.fut[0];
+    r.venc_u = r.venc[0];
+    r.lineas.forEach(l => {
+      const f = l[1], com = (l[5] || "").toLowerCase();
+      PED_PROVS[l[4]] = (PED_PROVS[l[4]] || 0) + l[2] * l[3];
+      if (!f || com.includes("liberamos") || f < hoyIso) return;
+      if (parseInt(f.substring(0, 4), 10) !== DASH_YEAR) return;
+      const lbl = f.substring(8, 10) + "-" + f.substring(5, 7);
+      const m = PED_BY_DAY[r.spec] = PED_BY_DAY[r.spec] || {};
+      m[lbl] = (m[lbl] || 0) + l[2];
+    });
+  });
+  // total pendiente por spec en las filas del evolutivo (para ordenar "Por llegar")
+  allStockRows().forEach(r => {
+    const p = PED_BY_SPEC[r.spec];
+    r.ped_tot = p ? p.uds : 0;
+  });
+}
+function pedMesLbl(mk) {
+  return (MES_ABBR[mk.substring(5, 7)] || mk.substring(5, 7)) + "-" + mk.substring(2, 4);
+}
+function pedNextLbl(iso) {
+  if (!iso) return null;
+  let s = parseInt(iso.substring(8, 10), 10) + "-" + (MES_ABBR[iso.substring(5, 7)] || iso.substring(5, 7));
+  if (parseInt(iso.substring(0, 4), 10) !== DASH_YEAR) s += "-" + iso.substring(2, 4);
+  return s;
+}
+function refreshPedidosBadge() {
+  const el = document.getElementById("badge-pedidos");
+  if (el && PED) el.textContent = PED.kpi.pedidos;
+}
+// Celda "Por llegar" del Stock evolutivo
+function porLlegarCell(r) {
+  const p = PED_BY_SPEC[r.spec];
+  if (!p || !p.uds) {
+    return '<td style="text-align:center;color:#cdd5d9;background:#fbfdff;border-left:1px solid #e3edf7;border-right:1px solid #e3edf7;">·</td>';
+  }
+  const click = ' onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')" style="cursor:pointer;background:#f4f8fd;text-align:center;font-size:11px;line-height:1.25;border-left:1px solid #d7e5f4;border-right:1px solid #d7e5f4;"';
+  let sub;
+  if (p.next) sub = '<span style="font-size:9px;color:#5b7a85;">pr&oacute;x. ' + pedNextLbl(p.next) + '</span>';
+  else if (p.venc[0] > 0) sub = '<span style="font-size:9px;color:#b8862f;">&#9888; fecha vencida</span>';
+  else sub = '<span style="font-size:9px;color:#5b7a85;">&mdash;</span>';
+  const col = p.next ? '#0d7a5f' : (p.venc[0] > 0 ? '#b8862f' : '#3f5a63');
+  return '<td' + click + '><div class="cell-stack">'
+       + '<span style="font-weight:700;color:' + col + ';">' + fmtInt(p.uds) + '</span>' + sub
+       + '</div></td>';
+}
+function porLlegarEmptyCell() {
+  return '<td style="text-align:center;color:#9fb3ba;background:#fbfdff;border-left:1px solid #e3edf7;border-right:1px solid #e3edf7;">&mdash;</td>';
+}
+// Badge de entrega prevista en celdas de dias futuros del evolutivo
+function pedBadgeHtml(spec, day, dayCls) {
+  const uds = (PED_BY_DAY[spec] || {})[day];
+  if (!uds) return null;
+  return '<td class="day-cell ' + dayCls + '" onclick="showPedidoDetail(\'' + jsesc(spec) + '\')" '
+       + 'style="background:#eaf2fb;text-align:center;vertical-align:middle;cursor:pointer;" '
+       + 'title="Entrega prevista según pedido de compra abierto">'
+       + '<div style="display:inline-block;background:#2b6cb0;color:#fff;border-radius:10px;padding:2px 7px;font-weight:700;font-size:11px;white-space:nowrap;">+' + fmtInt(uds) + ' 📦</div></td>';
+}
+function showPedidoDetail(spec) {
+  const p = PED_BY_SPEC[spec];
+  if (!p) return;
+  document.getElementById("dd-title").textContent = "📦 " + spec + " — pedidos de compra abiertos";
+  document.getElementById("dd-sub").textContent = p.desc + " · " + fmtInt(p.uds) + " uds pendientes · " + fmtEur(p.eur) + " · fichero del " + PED.fichero;
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr>';
+  ["Nº pedido", "Fecha entrega", "Pendiente", "Precio/u", "Importe", "Proveedor", "Comentario"].forEach(c => {
+    h += '<th style="background:#0e2b33;color:#fff;padding:6px 8px;font-size:11px;text-align:left;">' + c + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+  const hoyIso = PED.fichero.split("-").reverse().join("-");
+  p.lineas.forEach(l => {
+    const lib = (l[5] || "").toLowerCase().includes("liberamos");
+    const vencida = l[1] && l[1] < hoyIso;
+    const warn = lib || vencida || !l[1];
+    h += '<tr style="' + (warn ? 'background:#fef3e2;' : '') + '">';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;">' + escapeHtml(l[0]) + '</td>';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;' + (warn ? 'color:#b8862f;font-weight:700;' : '') + '">'
+       + (l[1] ? l[1].split("-").reverse().join("-") : "&mdash;") + (vencida && !lib ? ' &#9888;' : '') + '</td>';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;font-weight:700;">' + fmtInt(l[2]) + '</td>';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;">' + fmtEur(l[3]) + '</td>';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;">' + fmtEur(l[2] * l[3]) + '</td>';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;">' + escapeHtml(l[4]) + '</td>';
+    h += '<td style="padding:5px 8px;border-bottom:1px solid #e8eef0;font-style:italic;color:#b8862f;">' + escapeHtml(l[5] || "") + '</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table>';
+  document.getElementById("dd-content").innerHTML = h;
+  document.getElementById("modalDay").classList.add("show");
+}
+function setPedProv(p) {
+  window._pedProv = (window._pedProv === p) ? null : p;
+  rerender();
+}
+function renderPedidos(q) {
+  const sumEl = document.getElementById("pedidos-summary");
+  const notaEl = document.getElementById("pedidos-nota");
+  if (!PED) {
+    sumEl.innerHTML = '<div style="background:#fef3e2;border-left:4px solid #b8862f;border-radius:8px;padding:14px 18px;margin:14px 0;font-size:13px;color:#3f5a63;">Aún no hay ningún fichero <b>"pedidos de compra abiertos DD-MM-YYYY.xlsx"</b> en el pipeline. En cuanto Donet lo deposite en la carpeta de Drive, esta pestaña se rellena sola con la corrida diaria.</div>';
+    document.getElementById("table-pedidos").innerHTML = "";
+    notaEl.innerHTML = "";
+    return 0;
+  }
+  const k = PED.kpi;
+  // KPIs
+  let s = '<div style="display:flex;gap:12px;margin:14px 0;flex-wrap:wrap;">';
+  function kCard(n, lbl, color, bg) {
+    return '<div style="flex:1;min-width:190px;background:' + bg + ';border-left:4px solid ' + color + ';border-radius:8px;padding:12px 16px;">'
+         + '<div style="font-size:23px;font-weight:800;color:' + color + ';">' + n + '</div>'
+         + '<div style="font-size:11px;color:#3f5a63;">' + lbl + '</div></div>';
+  }
+  s += kCard(fmtEur(k.eur), "pendiente de recibir · " + k.pedidos + " pedidos · " + k.lineas + " líneas · " + k.provs + " proveedores (fichero " + PED.fichero + ")", "#0a8aad", "#e8f5f8");
+  s += kCard(fmtEur(k.mes_eur), "por recibir en " + pedMesLbl(PED.months[0]) + " (" + fmtInt(k.mes_uds) + " uds, fechas firmes)", "#0d7a5f", "#e6f4ef");
+  s += kCard(fmtEur(k.venc_eur), "⚠ fecha vencida o «liberamos según necesidad» (" + fmtInt(k.venc_uds) + " uds — fecha no fiable)", "#b8862f", "#fef3e2");
+  const bajo = alertItems().filter(x => x.u < x.min);
+  const bajoConPed = bajo.filter(x => (PED_BY_SPEC[x.r.spec] || {}).uds > 0);
+  s += kCard(bajoConPed.length + " / " + bajo.length, "SPECs bajo mínimo que ya tienen pedido de compra abierto", "#2b6cb0", "#eaf2fb");
+  s += '</div>';
+  // Chips proveedor
+  const topProvs = Object.entries(PED_PROVS).sort((a, b) => b[1] - a[1]).slice(0, 7);
+  s += '<div style="margin:4px 0 12px;font-size:12px;color:#3f5a63;">Proveedor: ';
+  s += '<span onclick="setPedProv(null)" style="cursor:pointer;display:inline-block;border-radius:14px;padding:3px 12px;margin:2px 6px 2px 0;font-weight:600;' + (!window._pedProv ? 'background:#0e2b33;color:#fff;' : 'background:#fff;border:1px solid #cfdde2;') + '">Todos</span>';
+  topProvs.forEach(pv => {
+    const on = window._pedProv === pv[0];
+    s += '<span onclick="setPedProv(\'' + jsesc(pv[0]) + '\')" title="' + fmtEur(pv[1]) + ' pendientes" style="cursor:pointer;display:inline-block;border-radius:14px;padding:3px 12px;margin:2px 6px 2px 0;font-weight:600;' + (on ? 'background:#0e2b33;color:#fff;' : 'background:#fff;border:1px solid #cfdde2;') + '">' + escapeHtml(pv[0].split(" ").slice(0, 2).join(" ")) + '</span>';
+  });
+  s += '</div>';
+  sumEl.innerHTML = s;
+  // Tabla pivot SPEC x mes
+  let rows = filterRows(PED.rows, q);
+  if (window._pedProv) rows = rows.filter(r => r.lineas.some(l => l[4] === window._pedProv));
+  const ss = sortState.pedidos;
+  rows = sortRows(rows, ss.col, ss.dir);
+  const cols = [
+    {key: "spec", label: "SPEC"},
+    {key: "desc", label: "Descripcion"},
+    {key: "sup", label: "Proveedor"},
+    {key: "cu", label: "Coste/u", num: true},
+    {key: "eur", label: "€ pendiente", num: true},
+    {key: "uds", label: "Uds pend.", num: true},
+  ];
+  PED.months.forEach(mk => cols.push({key: "pm_" + mk, label: pedMesLbl(mk), num: true}));
+  cols.push({key: "fut_u", label: "> " + pedMesLbl(PED.months[PED.months.length - 1]), num: true});
+  cols.push({key: "venc_u", label: "⚠ vencida / por liberar", num: true});
+  let h = makeHeader(cols, "pedidos");
+  h += "<tbody>";
+  function pedQtyCell(arr, style) {
+    if (!arr || !arr[0]) return '<td style="text-align:right;color:#cdd5d9;">·</td>';
+    return '<td style="text-align:right;' + (style || '') + '"><div class="cell-stack" style="align-items:flex-end;">'
+         + '<span style="font-weight:700;color:#0d7a5f;">+' + fmtInt(arr[0]) + '</span>'
+         + '<span class="eur">' + fmtEur(arr[1]) + '</span></div></td>';
+  }
+  rows.forEach(r => {
+    h += '<tr style="cursor:pointer;" onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')">';
+    h += '<td class="left spec">' + escapeHtml(r.spec) + '</td>';
+    h += '<td class="left desc" title="' + escapeHtml(r.desc) + '">' + escapeHtml((r.desc || "").substring(0, 48)) + '</td>';
+    h += '<td class="left sup">' + escapeHtml(r.sup) + '</td>';
+    h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
+    h += '<td style="text-align:right;font-weight:700;">' + fmtEur(r.eur) + '</td>';
+    h += '<td style="text-align:right;">' + fmtInt(r.uds) + '</td>';
+    PED.months.forEach(mk => { h += pedQtyCell(r.m[mk]); });
+    h += pedQtyCell(r.fut);
+    if (r.venc[0] > 0) {
+      h += '<td style="text-align:right;background:#fef3e2;"><div class="cell-stack" style="align-items:flex-end;">'
+         + '<span style="font-weight:700;color:#b8862f;">' + fmtInt(r.venc[0]) + '</span>'
+         + '<span class="eur" style="color:#b8862f;">' + fmtEur(r.venc[1]) + '</span></div></td>';
+    } else {
+      h += '<td style="text-align:right;color:#cdd5d9;">·</td>';
+    }
+    h += '</tr>';
+  });
+  // Fila total (de lo filtrado)
+  function tSum(f) { return rows.reduce((a, r) => a + f(r), 0); }
+  h += '<tr style="background:#e5eef1;font-weight:800;border-top:2px solid #0e2b33;">';
+  h += '<td class="left" colspan="3">TOTAL' + ((q || window._pedProv) ? ' (filtrado)' : '') + '</td><td></td>';
+  h += '<td style="text-align:right;">' + fmtEur(tSum(r => r.eur)) + '</td>';
+  h += '<td style="text-align:right;">' + fmtInt(tSum(r => r.uds)) + '</td>';
+  PED.months.forEach(mk => {
+    const u = tSum(r => (r.m[mk] || [0, 0])[0]), e = tSum(r => (r.m[mk] || [0, 0])[1]);
+    h += '<td style="text-align:right;">' + (u ? '+' + fmtInt(u) + '<br><span class="eur">' + fmtEur(e) + '</span>' : '·') + '</td>';
+  });
+  h += '<td style="text-align:right;">' + (tSum(r => r.fut[0]) ? '+' + fmtInt(tSum(r => r.fut[0])) + '<br><span class="eur">' + fmtEur(tSum(r => r.fut[1])) + '</span>' : '·') + '</td>';
+  h += '<td style="text-align:right;background:#fef3e2;color:#b8862f;">' + fmtInt(tSum(r => r.venc[0])) + '<br><span class="eur" style="color:#b8862f;">' + fmtEur(tSum(r => r.venc[1])) + '</span></td>';
+  h += '</tr></tbody>';
+  document.getElementById("table-pedidos").innerHTML = h;
+  notaEl.innerHTML = '<div style="margin:12px 0;font-size:11px;color:#3f5a63;background:#f4f8fd;border:1px solid #d7e5f4;border-radius:8px;padding:8px 12px;">'
+    + 'Cantidades = <b>unidades pendientes</b> por mes de entrega prevista (SAP), solo líneas con Estado Línea <b>Abierta</b> y pendiente &gt; 0. '
+    + '<b style="color:#b8862f;">⚠ vencida / por liberar</b> = fecha ya pasada o «liberamos según necesidad»: el mes no es fiable y no se pinta en el evolutivo. '
+    + 'Clic en una fila = detalle de las líneas. Clic en una cabecera = ordenar (Coste/u incluido).</div>';
+  return rows.length;
 }
 
 // ============================================================
@@ -1724,6 +1959,7 @@ function rerender() {
   else if (currentTab === "fichas") n = renderFichas(q);
   else if (currentTab === "alertas") n = renderAlertas(q);
   else if (currentTab === "prevision") n = renderPrevision(q);
+  else if (currentTab === "pedidos") n = renderPedidos(q);
   else n = renderMov(currentTab, q);
   document.getElementById("rowcount").textContent = n + " filas";
   if (window._renderInventarioChart && (currentTab === "stock" || currentTab === "simulacion")) window._renderInventarioChart();
@@ -2331,6 +2567,7 @@ document.getElementById("badge-entradas").textContent = DATA.entradas.length;
 document.getElementById("badge-salidas").textContent = DATA.salidas.length;
 document.getElementById("badge-cliente").textContent = DATA.salidas_cliente.length;
 refreshAlertBadge();
+refreshPedidosBadge();
 // Overlay: minimos frescos del repo (ediciones hechas despues del ultimo build)
 fetch("/api/minimos").then(r => r.ok ? r.json() : null).then(j => {
   if (!j || !j.minimos) return;
