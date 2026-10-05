@@ -22,7 +22,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-TARGET_DIR = Path(__file__).resolve().parent.parent / "data" / "ejercicios"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+TARGET_DIR = DATA_DIR / "ejercicios"
+# Pedidos de compra abiertos (fichero diario de Donet) -> data/pedidos/
+PEDIDOS_DIR = DATA_DIR / "pedidos"
 
 
 def main() -> int:
@@ -64,6 +67,32 @@ def main() -> int:
         new_count += 1
 
     print(f"[drive] {new_count} ficheros nuevos descargados a {TARGET_DIR}")
+
+    # --- Pedidos de compra abiertos (mismo folder de Drive) ---
+    PEDIDOS_DIR.mkdir(parents=True, exist_ok=True)
+    q2 = (f"'{folder_id}' in parents and trashed = false and "
+          f"name contains 'pedidos de compra abiertos' and "
+          f"mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'")
+    resp2 = svc.files().list(q=q2, pageSize=200, fields="files(id, name, modifiedTime)").execute()
+    files2 = resp2.get("files", [])
+    print(f"[drive] Encontrados {len(files2)} ficheros de pedidos abiertos")
+    new2 = 0
+    for f in files2:
+        local = PEDIDOS_DIR / f["name"]
+        if local.exists():
+            print(f"  ya existe: {f['name']}")
+            continue
+        print(f"  descargando: {f['name']}")
+        request = svc.files().get_media(fileId=f["id"])
+        buf = io.BytesIO()
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        with open(local, "wb") as fp:
+            fp.write(buf.getvalue())
+        new2 += 1
+    print(f"[drive] {new2} ficheros de pedidos nuevos descargados a {PEDIDOS_DIR}")
     return 0
 
 

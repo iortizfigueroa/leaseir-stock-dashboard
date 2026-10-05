@@ -33,6 +33,14 @@ if compgen -G "$ROOT/data/master/SPECS/*.xlsx" > /dev/null; then
           echo "[build] WARNING: no hay ejercicios en data/ejercicios/"
           fi
 
+      # Copiar pedidos de compra abiertos (el parser usa el mas reciente)
+      if compgen -G "$ROOT/data/pedidos/*.xlsx" > /dev/null; then
+        cp "$ROOT/data/pedidos/"*.xlsx "$WORK/"
+        echo "[build] Copiados $(ls "$ROOT/data/pedidos/" | wc -l) ficheros de pedidos"
+        else
+          echo "[build] INFO: no hay ficheros en data/pedidos/ — pestaña Pedidos vacía"
+          fi
+
           echo "[build] Ejecutando vision_html_full.py"
           cd "$WORK"
           python3 vision_html_full.py
