@@ -478,28 +478,55 @@ def main():
     # La hoja "proveedores" del ejercicio contiene el supplier de TODOS los SPECs.
     # El loader auxiliar busca "proveedores-SPEC" (nombre antiguo) y no encuentra nada.
     # Cargamos aqui la hoja real y sobrescribimos supplier en todos los info de days_real.
+    # Desde 30-09-2026 el export de SAP trae la hoja recortada (199 filas) y
+    # desde 05-10 ya no la trae. Por eso se FUSIONAN todos los ejercicios, del
+    # mas reciente al mas antiguo: cada SPEC toma el proveedor del fichero mas
+    # nuevo que lo tenga. Ultimo recurso: proveedor del pedido de compra abierto.
     _global_suppliers = {}
+    _sup_src = {"ejercicios": 0, "pedidos": 0}
+    def _sup_merge(_agg_in, _src):
+        for _k, _names in _agg_in.items():
+            if _k in _global_suppliers:
+                continue
+            _global_suppliers[_k] = next(iter(_names)) if len(_names) == 1 else " / ".join(sorted(_names))
+            _sup_src[_src] += 1
+    for _iso_g, _lbl_g, _fn_g in reversed(ej_files):
+        try:
+            _wb_g = openpyxl.load_workbook(_fn_g, data_only=True, read_only=True)
+            _sh_g_name = next((n for n in _wb_g.sheetnames if n.lower().startswith("proveedor")), None)
+            if _sh_g_name:
+                _agg = defaultdict(set)
+                for _r in _wb_g[_sh_g_name].iter_rows(values_only=True, min_row=2):
+                    if not _r or not _r[0]:
+                        continue
+                    _code = str(_r[0]).strip()
+                    _sup = str((_r[3] if len(_r) > 3 else "") or "").strip()
+                    if not _sup:
+                        continue
+                    _agg[normalize_code(_code)].add(_sup)
+                    _agg[_code].add(_sup)
+                _sup_merge(_agg, "ejercicios")
+            _wb_g.close()
+        except Exception as _e:
+            print(f"  WARN suppliers {_lbl_g}: {_e}")
     try:
-        _wb_g = openpyxl.load_workbook(ej_files[-1][2], data_only=True, read_only=True)
-        _sh_g_name = next((n for n in _wb_g.sheetnames if n.lower().startswith("proveedor")), None)
-        if _sh_g_name:
-            _sh_g = _wb_g[_sh_g_name]
+        _ped_g = sorted(PROJECT_DIR.glob("*edidos de compra abiertos*.xlsx"))
+        if _ped_g:
+            _wb_pg = openpyxl.load_workbook(_ped_g[-1], data_only=True, read_only=True)
             _agg = defaultdict(set)
-            for _r in _sh_g.iter_rows(values_only=True, min_row=2):
-                if not _r or not _r[0]:
+            for _r in _wb_pg[_wb_pg.sheetnames[0]].iter_rows(values_only=True, min_row=2):
+                if not _r or not _r[5] or not _r[4]:
                     continue
-                _code = str(_r[0]).strip()
-                _sup = str((_r[3] if len(_r) > 3 else "") or "").strip()
-                if not _sup:
-                    continue
-                _agg[normalize_code(_code)].add(_sup)
-                _agg[_code].add(_sup)
-            for _k, _names in _agg.items():
-                _global_suppliers[_k] = next(iter(_names)) if len(_names) == 1 else " / ".join(sorted(_names))
-        _wb_g.close()
-        print(f"  Proveedores cargados de hoja '{_sh_g_name}': {len(_global_suppliers)} entries")
+                _code = str(_r[5]).strip()
+                _agg[normalize_code(_code)].add(str(_r[4]).strip())
+                _agg[_code].add(str(_r[4]).strip())
+            _wb_pg.close()
+            _sup_merge(_agg, "pedidos")
     except Exception as _e:
-        print(f"  WARN suppliers: {_e}")
+        print(f"  WARN suppliers pedidos: {_e}")
+    print(f"  Proveedores: {len(_global_suppliers)} entries "
+          f"({_sup_src['ejercicios']} de hojas proveedores-SPEC de todos los ejercicios, "
+          f"{_sup_src['pedidos']} solo de pedidos abiertos)")
 
     # Sobrescribir supplier en info de cada dia (afecta a Stock, Entradas, Salidas, Cliente)
     for _lbl_x, _d_x in days_real.items():
@@ -1040,29 +1067,9 @@ def main():
 
     # info_29_local apunta al anchor real (usado por todas las cliente tables)
     info_29_local = days_real[ANCHOR_LBL]["info"]
-    # Fallback global de proveedores: hoja "proveedores" del ejercicio anchor.
-    # Cubre TODOS los SPECs (incluidos WIPs vendidos) que no estan en stock.
-    suppliers_anchor = {}
-    try:
-        _wb_sup = openpyxl.load_workbook(ej_files[-1][2], data_only=True, read_only=True)
-        _sh_sup_name = next((n for n in _wb_sup.sheetnames if n.lower().startswith("proveedor")), None)
-        if _sh_sup_name:
-            _sh_sup = _wb_sup[_sh_sup_name]
-            _by_code = defaultdict(set)
-            for _r in _sh_sup.iter_rows(values_only=True, min_row=2):
-                if not _r or not _r[0]:
-                    continue
-                _code = str(_r[0]).strip()
-                _sup = str((_r[3] if len(_r) > 3 else "") or "").strip()
-                if not _sup:
-                    continue
-                _by_code[normalize_code(_code)].add(_sup)
-                _by_code[_code].add(_sup)
-            for _k, _names in _by_code.items():
-                suppliers_anchor[_k] = next(iter(_names)) if len(_names) == 1 else " / ".join(sorted(_names))
-        _wb_sup.close()
-    except Exception as _e:
-        print(f"  WARN: no se pudo cargar hoja proveedores del anchor: {_e}")
+    # Fallback global de proveedores: el mapa fusionado de TODOS los ejercicios
+    # (+ pedidos abiertos) construido arriba. Cubre WIPs vendidos sin stock.
+    suppliers_anchor = dict(_global_suppliers)
 
     def _lookup_supplier(spec_emit):
         canon = normalize_code(spec_emit)
