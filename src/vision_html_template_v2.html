@@ -344,7 +344,7 @@ function makeHeader(cols, tabKey) {
 
 function setSort(tab, col) {
   const ss = sortState[tab];
-  const numKw = ["cu","uds","val","u_stock","v_stock","qty","coste_unit","compras","salidas","eur","fut_u","venc_u","ped_tot","minimo"];
+  const numKw = ["cu","uds","val","u_stock","v_stock","qty","coste_unit","compras","salidas","eur","fut_u","venc_u","lib_u","ped_tot","minimo"];
   const isNum = numKw.includes(col) || col.startsWith("u_") || col.startsWith("v_") || col.startsWith("pm_");
   if (ss.col === col) ss.dir = ss.dir === "asc" ? "desc" : "asc";
   else { ss.col = col; ss.dir = isNum ? "desc" : "asc"; }
@@ -1478,9 +1478,12 @@ if (PED) {
   PED.rows.forEach(r => {
     PED_BY_SPEC[r.spec] = r;
     // campos planos para ordenar con sortRows
-    PED.months.forEach(mk => { r["pm_" + mk] = (r.m[mk] || [0, 0])[0]; });
+    r.retr = r.retr || [0, 0];
+    r.lib = r.lib || [0, 0];
+    PED.months.forEach((mk, i) => { r["pm_" + mk] = (r.m[mk] || [0, 0])[0] + (i === 0 ? r.retr[0] : 0); });
     r.fut_u = r.fut[0];
     r.venc_u = r.venc[0];
+    r.lib_u = r.lib[0];
     r.lineas.forEach(l => {
       const f = l[1], com = (l[5] || "").toLowerCase();
       PED_PROVS[l[4]] = (PED_PROVS[l[4]] || 0) + l[2] * l[3];
@@ -1594,8 +1597,9 @@ function renderPedidos(q) {
          + '<div style="font-size:11px;color:#3f5a63;">' + lbl + '</div></div>';
   }
   s += kCard(fmtEur(k.eur), "pendiente de recibir · " + k.pedidos + " pedidos · " + k.lineas + " líneas · " + k.provs + " proveedores (fichero " + PED.fichero + ")", "#0a8aad", "#e8f5f8");
-  s += kCard(fmtEur(k.mes_eur), "por recibir en " + pedMesLbl(PED.months[0]) + " (" + fmtInt(k.mes_uds) + " uds, fechas firmes)", "#0d7a5f", "#e6f4ef");
-  s += kCard(fmtEur(k.venc_eur), "⚠ fecha vencida o «liberamos según necesidad» (" + fmtInt(k.venc_uds) + " uds — fecha no fiable)", "#b8862f", "#fef3e2");
+  const kRetrE = k.retr_eur || 0, kLibE = (k.lib_eur != null ? k.lib_eur : k.venc_eur), kLibU = (k.lib_uds != null ? k.lib_uds : k.venc_uds);
+  s += kCard(fmtEur(k.mes_eur + kRetrE), "por recibir en " + pedMesLbl(PED.months[0]) + ": " + fmtEur(k.mes_eur) + ' con fecha de este mes + <b style="color:#c0492f;">' + fmtEur(kRetrE) + " retrasados</b> (fecha ya pasada, sin recibir)", "#0d7a5f", "#e6f4ef");
+  s += kCard(fmtEur(kLibE), "por liberar «según necesidad» (" + fmtInt(kLibU) + " uds — los vamos pidiendo, sin fecha fiable)", "#b8862f", "#fef3e2");
   const bajo = alertItems().filter(x => x.u < x.min);
   const bajoConPed = bajo.filter(x => (PED_BY_SPEC[x.r.spec] || {}).uds > 0);
   s += kCard(bajoConPed.length + " / " + bajo.length, "SPECs bajo mínimo que ya tienen pedido de compra abierto", "#2b6cb0", "#eaf2fb");
@@ -1625,7 +1629,7 @@ function renderPedidos(q) {
   ];
   PED.months.forEach(mk => cols.push({key: "pm_" + mk, label: pedMesLbl(mk), num: true}));
   cols.push({key: "fut_u", label: "> " + pedMesLbl(PED.months[PED.months.length - 1]), num: true});
-  cols.push({key: "venc_u", label: "⚠ vencida / por liberar", num: true});
+  cols.push({key: "lib_u", label: "Por liberar (según necesidad)", num: true});
   let h = makeHeader(cols, "pedidos");
   h += "<tbody>";
   function pedQtyCell(arr, style) {
@@ -1633,6 +1637,15 @@ function renderPedidos(q) {
     return '<td style="text-align:right;' + (style || '') + '"><div class="cell-stack" style="align-items:flex-end;">'
          + '<span style="font-weight:700;color:#0d7a5f;">+' + fmtInt(arr[0]) + '</span>'
          + '<span class="eur">' + fmtEur(arr[1]) + '</span></div></td>';
+  }
+  // Mes en curso: lo de fecha de este mes (verde) + lo RETRASADO (rojo) = fecha
+  // firme ya pasada y aún sin recibir (incluye meses anteriores)
+  function pedMes0Cell(arr, retr) {
+    let inner = '';
+    if (arr && arr[0]) inner += '<span style="font-weight:700;color:#0d7a5f;">+' + fmtInt(arr[0]) + '</span><span class="eur">' + fmtEur(arr[1]) + '</span>';
+    inner += '<span style="font-weight:700;color:#c0492f;margin-top:2px;" title="Fecha de entrega ya pasada y sin recibir">+' + fmtInt(retr[0]) + ' retras.</span>'
+           + '<span class="eur" style="color:#c0492f;">' + fmtEur(retr[1]) + '</span>';
+    return '<td style="text-align:right;background:#fdecea;"><div class="cell-stack" style="align-items:flex-end;">' + inner + '</div></td>';
   }
   rows.forEach(r => {
     h += '<tr style="cursor:pointer;" onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')">';
@@ -1642,12 +1655,15 @@ function renderPedidos(q) {
     h += '<td class="cu">' + fmtEur(r.cu) + '</td>';
     h += '<td style="text-align:right;font-weight:700;">' + fmtEur(r.eur) + '</td>';
     h += '<td style="text-align:right;">' + fmtInt(r.uds) + '</td>';
-    PED.months.forEach(mk => { h += pedQtyCell(r.m[mk]); });
+    PED.months.forEach((mk, i) => {
+      if (i === 0 && r.retr[0] > 0) h += pedMes0Cell(r.m[mk], r.retr);
+      else h += pedQtyCell(r.m[mk]);
+    });
     h += pedQtyCell(r.fut);
-    if (r.venc[0] > 0) {
+    if (r.lib[0] > 0) {
       h += '<td style="text-align:right;background:#fef3e2;"><div class="cell-stack" style="align-items:flex-end;">'
-         + '<span style="font-weight:700;color:#b8862f;">' + fmtInt(r.venc[0]) + '</span>'
-         + '<span class="eur" style="color:#b8862f;">' + fmtEur(r.venc[1]) + '</span></div></td>';
+         + '<span style="font-weight:700;color:#b8862f;">' + fmtInt(r.lib[0]) + '</span>'
+         + '<span class="eur" style="color:#b8862f;">' + fmtEur(r.lib[1]) + '</span></div></td>';
     } else {
       h += '<td style="text-align:right;color:#cdd5d9;">·</td>';
     }
@@ -1659,17 +1675,25 @@ function renderPedidos(q) {
   h += '<td class="left" colspan="3">TOTAL' + ((q || window._pedProv) ? ' (filtrado)' : '') + '</td><td></td>';
   h += '<td style="text-align:right;">' + fmtEur(tSum(r => r.eur)) + '</td>';
   h += '<td style="text-align:right;">' + fmtInt(tSum(r => r.uds)) + '</td>';
-  PED.months.forEach(mk => {
+  PED.months.forEach((mk, i) => {
     const u = tSum(r => (r.m[mk] || [0, 0])[0]), e = tSum(r => (r.m[mk] || [0, 0])[1]);
-    h += '<td style="text-align:right;">' + (u ? '+' + fmtInt(u) + '<br><span class="eur">' + fmtEur(e) + '</span>' : '·') + '</td>';
+    let c = u ? '+' + fmtInt(u) + '<br><span class="eur">' + fmtEur(e) + '</span>' : '·';
+    if (i === 0) {
+      const ru = tSum(r => r.retr[0]), re = tSum(r => r.retr[1]);
+      if (ru) c += '<br><span style="color:#c0492f;">+' + fmtInt(ru) + ' retras.</span><br><span class="eur" style="color:#c0492f;">' + fmtEur(re) + '</span>';
+      h += '<td style="text-align:right;' + (ru ? 'background:#fdecea;' : '') + '">' + c + '</td>';
+    } else {
+      h += '<td style="text-align:right;">' + c + '</td>';
+    }
   });
   h += '<td style="text-align:right;">' + (tSum(r => r.fut[0]) ? '+' + fmtInt(tSum(r => r.fut[0])) + '<br><span class="eur">' + fmtEur(tSum(r => r.fut[1])) + '</span>' : '·') + '</td>';
-  h += '<td style="text-align:right;background:#fef3e2;color:#b8862f;">' + fmtInt(tSum(r => r.venc[0])) + '<br><span class="eur" style="color:#b8862f;">' + fmtEur(tSum(r => r.venc[1])) + '</span></td>';
+  h += '<td style="text-align:right;background:#fef3e2;color:#b8862f;">' + fmtInt(tSum(r => r.lib[0])) + '<br><span class="eur" style="color:#b8862f;">' + fmtEur(tSum(r => r.lib[1])) + '</span></td>';
   h += '</tr></tbody>';
   document.getElementById("table-pedidos").innerHTML = h;
   notaEl.innerHTML = '<div style="margin:12px 0;font-size:11px;color:#3f5a63;background:#f4f8fd;border:1px solid #d7e5f4;border-radius:8px;padding:8px 12px;">'
     + 'Cantidades = <b>unidades pendientes</b> por mes de entrega prevista (SAP), solo líneas con Estado Línea <b>Abierta</b> y pendiente &gt; 0. '
-    + '<b style="color:#b8862f;">⚠ vencida / por liberar</b> = fecha ya pasada o «liberamos según necesidad»: el mes no es fiable y no se pinta en el evolutivo. '
+    + '<b style="color:#c0492f;">Rojo «retras.»</b> (en ' + pedMesLbl(PED.months[0]) + ') = fecha de entrega ya pasada y aún sin recibir: se espera ya, va retrasado. '
+    + '<b style="color:#b8862f;">Por liberar</b> = líneas «liberamos según necesidad»: las vamos pidiendo, sin fecha fiable. Ninguna de las dos se pinta como entrega en el evolutivo. '
     + 'Clic en una fila = detalle de las líneas. Clic en una cabecera = ordenar (Coste/u incluido).</div>';
   return rows.length;
 }

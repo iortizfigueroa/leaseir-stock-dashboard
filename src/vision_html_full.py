@@ -1471,6 +1471,7 @@ def main():
                     "cu": _cu_lookup.get(_spec),
                     "eur": 0.0, "uds": 0.0,
                     "m": {}, "fut": [0, 0.0], "venc": [0, 0.0],
+                    "retr": [0, 0.0], "lib": [0, 0.0],
                     "next": None, "lineas": [],
                     "_psum": 0.0, "_pq": 0.0,
                 })
@@ -1482,6 +1483,11 @@ def main():
                 if _bucket == "venc":
                     _e["venc"][0] += _pend
                     _e["venc"][1] += _pend * _precio
+                    # retr = fecha firme ya pasada y sin recibir (se pinta en el mes
+                    # en curso como RETRASADO); lib = «liberamos segun necesidad» o sin fecha
+                    _sub = "lib" if (_lib or _fecha is None) else "retr"
+                    _e[_sub][0] += _pend
+                    _e[_sub][1] += _pend * _precio
                 elif _bucket == "fut":
                     _e["fut"][0] += _pend
                     _e["fut"][1] += _pend * _precio
@@ -1508,6 +1514,8 @@ def main():
                 _e["m"] = {k: [round(v[0], 1), round(v[1])] for k, v in _e["m"].items()}
                 _e["fut"] = [round(_e["fut"][0], 1), round(_e["fut"][1])]
                 _e["venc"] = [round(_e["venc"][0], 1), round(_e["venc"][1])]
+                _e["retr"] = [round(_e["retr"][0], 1), round(_e["retr"][1])]
+                _e["lib"] = [round(_e["lib"][0], 1), round(_e["lib"][1])]
                 _e["eur"] = round(_e["eur"])
                 _e["uds"] = round(_e["uds"], 1)
                 _e["lineas"].sort(key=lambda l: (l[1] or "9999"))
@@ -1524,6 +1532,10 @@ def main():
                 "mes_uds": round(sum(r["m"].get(_mes0, [0, 0])[0] for r in _rows_out)),
                 "venc_eur": round(sum(r["venc"][1] for r in _rows_out)),
                 "venc_uds": round(sum(r["venc"][0] for r in _rows_out)),
+                "retr_eur": round(sum(r["retr"][1] for r in _rows_out)),
+                "retr_uds": round(sum(r["retr"][0] for r in _rows_out)),
+                "lib_eur": round(sum(r["lib"][1] for r in _rows_out)),
+                "lib_uds": round(sum(r["lib"][0] for r in _rows_out)),
             }
             pedidos_payload = {
                 "fichero": _ped_date.strftime("%d-%m-%Y"),
