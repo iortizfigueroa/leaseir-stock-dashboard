@@ -246,11 +246,23 @@ def _load_ofs_robust(daily_file, inv):
     return rows
 
 
+# Memoria acumulada de proveedores entre ejercicios (se procesan en orden
+# cronologico). Desde 30-09-2026 el export de SAP trae la hoja
+# "proveedores-SPEC" recortada y desde 05-10 no la trae: sin ella, classify()
+# toma piezas compradas cuya descripcion parece de WIP (p.ej. "AHR Shipping
+# crate") como WIP sin escandallo y su stock desaparece del SPEC (pasa a
+# bolsa D). Con la memoria, un SPEC que alguna vez tuvo proveedor sigue siendo RAW.
+SUPPLIER_MEMORY: dict = {}
+
+
 def _fallback(daily_file):
     try:
-        suppliers = prov.load_suppliers_from_xlsx(daily_file)
+        _sup_file = prov.load_suppliers_from_xlsx(daily_file)
     except Exception:
-        suppliers = {}
+        _sup_file = {}
+    suppliers = dict(SUPPLIER_MEMORY)
+    suppliers.update(_sup_file)
+    SUPPLIER_MEMORY.update(_sup_file)
     try:
         inv = prov.load_inventory_from_xlsx(daily_file)
     except KeyError:
