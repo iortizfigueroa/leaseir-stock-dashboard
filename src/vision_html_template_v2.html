@@ -1447,12 +1447,14 @@ function renderAlertas(q) {
       h += '<td class="left" style="font-size:11px;white-space:nowrap;font-weight:700;color:' + (x.u < x.min ? '#c0492f' : '#9fb3ba') + ';">' + (x.u < x.min ? '✗ sin pedido' : '&mdash;') + '</td>';
     } else {
       let ptxt, pcol;
+      const ppRetr = (pp.retr || [0, 0])[0];
       if (pp.next) {
         ptxt = '✓ ' + fmtInt(pp.uds) + ' uds · próx. ' + pedNextLbl(pp.next);
-        if (pp.venc[0] > 0) ptxt += ' <span style="color:#b8862f;">· ⚠ ' + fmtInt(pp.venc[0]) + ' retrasadas</span>';
+        if (ppRetr > 0) ptxt += ' <span style="color:#c0492f;">· ⚠ ' + fmtInt(ppRetr) + ' retrasadas</span>';
         pcol = '#0d7a5f';
       }
-      else { ptxt = fmtInt(pp.uds) + ' uds · ⚠ fecha vencida'; pcol = '#b8862f'; }
+      else if (ppRetr > 0) { ptxt = fmtInt(pp.uds) + ' uds · ⚠ retrasado'; pcol = '#c0492f'; }
+      else { ptxt = fmtInt(pp.uds) + ' uds · por liberar'; pcol = '#b8862f'; }
       h += '<td class="left" style="font-size:11px;white-space:nowrap;font-weight:700;color:' + pcol + ';cursor:pointer;" onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')">' + ptxt + '</td>';
     }
     h += '<td class="left" style="font-weight:700;color:' + color + ';white-space:nowrap;">' + estado + '</td>';
@@ -1520,15 +1522,17 @@ function porLlegarCell(r) {
     return '<td style="text-align:center;color:#cdd5d9;background:#fbfdff;border-left:1px solid #e3edf7;border-right:1px solid #e3edf7;">·</td>';
   }
   const click = ' onclick="showPedidoDetail(\'' + jsesc(r.spec) + '\')" style="cursor:pointer;background:#f4f8fd;text-align:center;font-size:11px;line-height:1.25;border-left:1px solid #d7e5f4;border-right:1px solid #d7e5f4;"';
+  const pRetr = (p.retr || [0, 0])[0], pLib = (p.lib || p.venc || [0, 0])[0];
   let sub;
   if (p.next) sub = '<span style="font-size:9px;color:#5b7a85;">pr&oacute;x. ' + pedNextLbl(p.next) + '</span>';
-  else if (p.venc[0] > 0) sub = '<span style="font-size:9px;color:#b8862f;">&#9888; fecha vencida</span>';
+  else if (pRetr > 0) sub = '<span style="font-size:9px;color:#c0492f;font-weight:700;">&#9888; retrasado</span>';
+  else if (pLib > 0) sub = '<span style="font-size:9px;color:#b8862f;">por liberar</span>';
   else sub = '<span style="font-size:9px;color:#5b7a85;">&mdash;</span>';
-  // Parte retrasada (fecha vencida o «liberamos») además de una próxima fecha firme
-  if (p.next && p.venc[0] > 0) {
-    sub += '<span style="font-size:9px;color:#b8862f;font-weight:700;">&#9888; ' + fmtInt(p.venc[0]) + ' retrasadas</span>';
+  // Parte retrasada (fecha de este mes / últimos 30 días ya pasada) además de una próxima fecha firme
+  if (p.next && pRetr > 0) {
+    sub += '<span style="font-size:9px;color:#c0492f;font-weight:700;">&#9888; ' + fmtInt(pRetr) + ' retrasadas</span>';
   }
-  const col = p.next ? '#0d7a5f' : (p.venc[0] > 0 ? '#b8862f' : '#3f5a63');
+  const col = p.next ? '#0d7a5f' : (pRetr > 0 ? '#c0492f' : (pLib > 0 ? '#b8862f' : '#3f5a63'));
   return '<td' + click + '><div class="cell-stack">'
        + '<span style="font-weight:700;color:' + col + ';">' + fmtInt(p.uds) + '</span>' + sub
        + '</div></td>';
@@ -1598,8 +1602,8 @@ function renderPedidos(q) {
   }
   s += kCard(fmtEur(k.eur), "pendiente de recibir · " + k.pedidos + " pedidos · " + k.lineas + " líneas · " + k.provs + " proveedores (fichero " + PED.fichero + ")", "#0a8aad", "#e8f5f8");
   const kRetrE = k.retr_eur || 0, kLibE = (k.lib_eur != null ? k.lib_eur : k.venc_eur), kLibU = (k.lib_uds != null ? k.lib_uds : k.venc_uds);
-  s += kCard(fmtEur(k.mes_eur + kRetrE), "por recibir en " + pedMesLbl(PED.months[0]) + ": " + fmtEur(k.mes_eur) + ' con fecha de este mes + <b style="color:#c0492f;">' + fmtEur(kRetrE) + " retrasados</b> (fecha ya pasada, sin recibir)", "#0d7a5f", "#e6f4ef");
-  s += kCard(fmtEur(kLibE), "por liberar «según necesidad» (" + fmtInt(kLibU) + " uds — los vamos pidiendo, sin fecha fiable)", "#b8862f", "#fef3e2");
+  s += kCard(fmtEur(k.mes_eur + kRetrE), "por recibir en " + pedMesLbl(PED.months[0]) + ": " + fmtEur(k.mes_eur) + ' con fecha de este mes + <b style="color:#c0492f;">' + fmtEur(kRetrE) + " retrasados</b> (fecha de este mes o de los últimos 30 días, sin recibir)", "#0d7a5f", "#e6f4ef");
+  s += kCard(fmtEur(kLibE), "por liberar (" + fmtInt(kLibU) + " uds): «liberamos según necesidad» + fechas vencidas hace más de 30 días — sin fecha fiable", "#b8862f", "#fef3e2");
   const bajo = alertItems().filter(x => x.u < x.min);
   const bajoConPed = bajo.filter(x => (PED_BY_SPEC[x.r.spec] || {}).uds > 0);
   s += kCard(bajoConPed.length + " / " + bajo.length, "SPECs bajo mínimo que ya tienen pedido de compra abierto", "#2b6cb0", "#eaf2fb");
@@ -1629,7 +1633,7 @@ function renderPedidos(q) {
   ];
   PED.months.forEach(mk => cols.push({key: "pm_" + mk, label: pedMesLbl(mk), num: true}));
   cols.push({key: "fut_u", label: "> " + pedMesLbl(PED.months[PED.months.length - 1]), num: true});
-  cols.push({key: "lib_u", label: "Por liberar (según necesidad)", num: true});
+  cols.push({key: "lib_u", label: "Por liberar", num: true});
   let h = makeHeader(cols, "pedidos");
   h += "<tbody>";
   function pedQtyCell(arr, style) {
@@ -1692,8 +1696,8 @@ function renderPedidos(q) {
   document.getElementById("table-pedidos").innerHTML = h;
   notaEl.innerHTML = '<div style="margin:12px 0;font-size:11px;color:#3f5a63;background:#f4f8fd;border:1px solid #d7e5f4;border-radius:8px;padding:8px 12px;">'
     + 'Cantidades = <b>unidades pendientes</b> por mes de entrega prevista (SAP), solo líneas con Estado Línea <b>Abierta</b> y pendiente &gt; 0. '
-    + '<b style="color:#c0492f;">Rojo «retras.»</b> (en ' + pedMesLbl(PED.months[0]) + ') = fecha de entrega ya pasada y aún sin recibir: se espera ya, va retrasado. '
-    + '<b style="color:#b8862f;">Por liberar</b> = líneas «liberamos según necesidad»: las vamos pidiendo, sin fecha fiable. Ninguna de las dos se pinta como entrega en el evolutivo. '
+    + '<b style="color:#c0492f;">Rojo «retras.»</b> (en ' + pedMesLbl(PED.months[0]) + ') = fecha de entrega de este mes o de los últimos 30 días, ya pasada y aún sin recibir: se espera ya, va retrasado. '
+    + '<b style="color:#b8862f;">Por liberar</b> = líneas «liberamos según necesidad» o con fecha vencida hace más de 30 días: sin fecha fiable. Ninguna de las dos se pinta como entrega en el evolutivo. '
     + 'Clic en una fila = detalle de las líneas. Clic en una cabecera = ordenar (Coste/u incluido).</div>';
   return rows.length;
 }

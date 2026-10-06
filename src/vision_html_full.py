@@ -23,7 +23,7 @@ import json
 import re
 import importlib.util
 from collections import defaultdict
-from datetime import datetime, date as _date
+from datetime import datetime, date as _date, timedelta as _timedelta
 from pathlib import Path
 
 import openpyxl
@@ -1483,9 +1483,12 @@ def main():
                 if _bucket == "venc":
                     _e["venc"][0] += _pend
                     _e["venc"][1] += _pend * _precio
-                    # retr = fecha firme ya pasada y sin recibir (se pinta en el mes
-                    # en curso como RETRASADO); lib = «liberamos segun necesidad» o sin fecha
-                    _sub = "lib" if (_lib or _fecha is None) else "retr"
+                    # retr = fecha firme ya pasada y sin recibir, de ESTE MES o de los
+                    # ULTIMOS 30 DIAS (se pinta en el mes en curso como RETRASADO).
+                    # lib = «liberamos segun necesidad», sin fecha, o vencido hace
+                    # mas de 30 dias (fecha ya no fiable -> «Por liberar»).
+                    _retr_desde = min(_ped_date.replace(day=1), _ped_date - _timedelta(days=30))
+                    _sub = "lib" if (_lib or _fecha is None or _fecha < _retr_desde) else "retr"
                     _e[_sub][0] += _pend
                     _e[_sub][1] += _pend * _precio
                 elif _bucket == "fut":
