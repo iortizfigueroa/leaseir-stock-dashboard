@@ -1415,14 +1415,51 @@ def main():
     # ============================================================
     pedidos_payload = None
     try:
-        _ped_files = []
+        # Fuentes: (a) ficheros sueltos «pedidos de compra abiertos DD-MM-YYYY.xlsx»
+        # (data/pedidos) y (b) desde el 06-10-2026 Donet los manda como HOJA dentro
+        # del ejercicio diario («pedidos de compra abiertos DD-M…», nombre cortado a
+        # 31 car.). Se usa la fuente mas reciente; a igual fecha, el fichero suelto.
+        _ped_files = []   # (fecha, prioridad, path, hoja|None)
         for _p in PROJECT_DIR.glob("*edidos de compra abiertos*.xlsx"):
             _m = re.search(r"(\d{2})-(\d{2})-(\d{4})", _p.name)
             if _m:
-                _ped_files.append((_date(int(_m.group(3)), int(_m.group(2)), int(_m.group(1))), _p))
+                _ped_files.append((_date(int(_m.group(3)), int(_m.group(2)), int(_m.group(1))), 1, _p, None))
+        for _iso_e, _lbl_e, _fn_e in reversed(ej_files):
+            try:
+                _wb_e = openpyxl.load_workbook(_fn_e, read_only=True)
+                _sh_e = next((n for n in _wb_e.sheetnames if n.lower().startswith("pedidos de compra")), None)
+                _wb_e.close()
+            except Exception:
+                _sh_e = None
+            if _sh_e:
+                _m = re.search(r"(\d{2})-(\d{2})-(\d{4})", Path(_fn_e).name)
+                if _m:
+                    _ped_files.append((_date(int(_m.group(3)), int(_m.group(2)), int(_m.group(1))), 0, Path(_fn_e), _sh_e))
+                break  # solo hace falta el ejercicio mas reciente que la traiga
+        # Memoria de comentarios por nº de pedido («liberamos segun necesidad»):
+        # la hoja dentro del ejercicio NO trae la columna de comentarios, asi que
+        # se hereda de los ficheros sueltos que si la traian (el comentario es
+        # siempre el mismo para todas las lineas de un pedido).
+        def _ped_key(_v):
+            try:
+                return str(int(float(_v)))
+            except (TypeError, ValueError):
+                return str(_v or "").strip()
+        _ped_com_mem = {}
+        for _fd, _pr, _pp, _sh in sorted(_ped_files):
+            if _sh is not None:
+                continue
+            try:
+                _wb_c = openpyxl.load_workbook(_pp, data_only=True, read_only=True)
+                for _rc in _wb_c[_wb_c.sheetnames[0]].iter_rows(min_row=2, values_only=True):
+                    if _rc and _rc[0] is not None and len(_rc) > 15 and _rc[15]:
+                        _ped_com_mem[_ped_key(_rc[1])] = str(_rc[15]).strip()
+                _wb_c.close()
+            except Exception:
+                pass
         if _ped_files:
-            _ped_files.sort()
-            _ped_date, _ped_path = _ped_files[-1]
+            _ped_files.sort(key=lambda t: (t[0], t[1]))
+            _ped_date, _ped_prio, _ped_path, _ped_sheet = _ped_files[-1]
             # 6 meses vista desde el mes del fichero
             _ped_months = []
             _y, _mm = _ped_date.year, _ped_date.month
@@ -1438,7 +1475,7 @@ def main():
                 if _r.get("cu"):
                     _cu_lookup.setdefault(_r["spec"], _r["cu"])
             _wb_p = openpyxl.load_workbook(_ped_path, data_only=True, read_only=True)
-            _ws_p = _wb_p[_wb_p.sheetnames[0]]
+            _ws_p = _wb_p[_ped_sheet] if _ped_sheet else _wb_p[_wb_p.sheetnames[0]]
             _ped_rows = {}
             _ped_nums = set()
             _ped_provs = set()
@@ -1450,15 +1487,19 @@ def main():
                 _pend = float(_row[9] or 0)
                 if not _estado_lin.startswith("abier") or _pend <= 0:
                     continue
-                _n_lineas += 1
                 _spec = str(_row[5] or "").strip()
+                if not _spec:
+                    continue
+                _n_lineas += 1
                 _prov_n = str(_row[4] or "").strip()
                 _precio = float(_row[13] or 0)
                 _com = str(_row[15] or "").strip() if len(_row) > 15 else ""
+                if not _com:
+                    _com = _ped_com_mem.get(_ped_key(_row[1]), "")
                 _lib = "liberamos" in _com.lower()
                 _f = _row[10]
                 _fecha = _f.date() if isinstance(_f, datetime) else (_f if isinstance(_f, _date) else None)
-                _ped_nums.add(_row[1])
+                _ped_nums.add(_ped_key(_row[1]))
                 _ped_provs.add(_prov_n)
                 if _lib or _fecha is None or _fecha < _ped_date:
                     _bucket = "venc"
@@ -1502,7 +1543,7 @@ def main():
                     if _e["next"] is None or _fecha.isoformat() < _e["next"]:
                         _e["next"] = _fecha.isoformat()
                 _e["lineas"].append([
-                    str(_row[1] or ""),
+                    _ped_key(_row[1]),
                     _fecha.isoformat() if _fecha else None,
                     _pend, _precio, _prov_n, _com,
                 ])
@@ -1546,7 +1587,8 @@ def main():
                 "kpi": _kpi,
                 "rows": _rows_out,
             }
-            print(f"  Pedidos abiertos ({_ped_path.name}): {_n_lineas} lineas abiertas, "
+            _ped_src_txt = _ped_path.name + ((" · hoja " + repr(_ped_sheet)) if _ped_sheet else "")
+            print(f"  Pedidos abiertos ({_ped_src_txt}; {len(_ped_com_mem)} pedidos con comentario heredado): {_n_lineas} lineas abiertas, "
                   f"{_kpi['eur']:,.0f} EUR pendientes, {len(_rows_out)} specs")
         else:
             print("  Pedidos abiertos: sin fichero 'pedidos de compra abiertos*.xlsx' — pestaña vacia")
